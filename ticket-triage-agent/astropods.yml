@@ -1,0 +1,81 @@
+# yaml-language-server: $schema=https://astropods.ai/schema/package.json
+spec: package/v1
+name: ticket-triage-agent
+
+agent:
+  build:
+    context: .
+    dockerfile: Dockerfile
+
+models:
+  anthropic:
+    provider: anthropic
+    models:
+      - claude-haiku-4-5-20251001
+
+inputs:
+  ZENDESK_SUBDOMAIN:
+    name: ZENDESK_SUBDOMAIN
+    datatype: string
+    description: "Zendesk subdomain — the {subdomain} part of https://{subdomain}.zendesk.com"
+    display-as: short-text
+  ZENDESK_AGENT_EMAIL:
+    name: ZENDESK_AGENT_EMAIL
+    datatype: string
+    description: "Zendesk agent email address used for API authentication"
+    display-as: short-text
+  ZENDESK_API_KEY:
+    name: ZENDESK_API_KEY
+    datatype: string
+    secret: true
+    description: "Zendesk API token"
+    display-as: short-text
+  OPENAI_API_KEY:
+    name: OPENAI_API_KEY
+    datatype: string
+    secret: true
+    description: "OpenAI API key — used for generating text embeddings (Anthropic does not provide an embeddings API)"
+    display-as: short-text
+  PINECONE_HOST:
+    name: PINECONE_HOST
+    datatype: string
+    description: "Full Pinecone index host URL including https:// (e.g. https://my-index-abc123.svc.pinecone.io)"
+    display-as: short-text
+  PINECONE_API_KEY:
+    name: PINECONE_API_KEY
+    datatype: string
+    secret: true
+    description: "Pinecone API key"
+    display-as: short-text
+  SLACK_BOT_TOKEN:
+    name: SLACK_BOT_TOKEN
+    datatype: string
+    secret: true
+    description: "Slack bot token (xoxb-...) for receiving messages via Socket Mode"
+    display-as: short-text
+    optional: true
+  SLACK_APP_TOKEN:
+    name: SLACK_APP_TOKEN
+    datatype: string
+    secret: true
+    description: "Slack app-level token (xapp-...) for Socket Mode connection"
+    display-as: short-text
+    optional: true
+  SLACK_POSTING_TOKEN:
+    name: SLACK_POSTING_TOKEN
+    datatype: string
+    secret: true
+    description: "Slack bot token (xoxb-...) for escalation notifications to human agents. Same token as your Slack Bot Token."
+    display-as: short-text
+    optional: true
+  SLACK_CHANNEL_ID:
+    name: SLACK_CHANNEL_ID
+    datatype: string
+    description: "Slack channel ID where human agent escalation alerts are sent (e.g. C012AB3CD)"
+    display-as: short-text
+    optional: true
+
+dev:
+  interfaces:
+    messaging:
+      adapters: [web, slack]

@@ -1,0 +1,70 @@
+# yaml-language-server: $schema=https://astropods.ai/schema/package.json
+spec: package/v1
+name: "industry-news-agent"
+
+agent:
+  build:
+    context: .
+    dockerfile: Dockerfile
+
+models:
+  anthropic:
+    provider: anthropic
+
+inputs:
+  NEWS_API_KEY:
+    name: NEWS_API_KEY
+    datatype: string
+    secret: true
+    description: "NewsAPI key (newsapi.org)"
+    display-as: short-text
+  GNEWS_API_KEY:
+    name: GNEWS_API_KEY
+    datatype: string
+    secret: true
+    description: "GNews API key (gnews.io)"
+    display-as: short-text
+  GUARDIAN_API_KEY:
+    name: GUARDIAN_API_KEY
+    datatype: string
+    secret: true
+    description: "The Guardian Open Platform API key (open-platform.theguardian.com)"
+    display-as: short-text
+  MEDIASTACK_API_KEY:
+    name: MEDIASTACK_API_KEY
+    datatype: string
+    secret: true
+    description: "MediaStack API key (mediastack.com)"
+    display-as: short-text
+  SLACK_BOT_TOKEN:
+    name: SLACK_BOT_TOKEN
+    datatype: string
+    secret: true
+    description: "Slack bot token (xoxb-...) for Socket Mode — receiving slash commands and messages"
+    optional: true
+    display-as: short-text
+  SLACK_APP_TOKEN:
+    name: SLACK_APP_TOKEN
+    datatype: string
+    secret: true
+    description: "Slack app-level token (xapp-...) for Socket Mode connection"
+    optional: true
+    display-as: short-text
+  SLACK_POSTING_TOKEN:
+    name: SLACK_POSTING_TOKEN
+    datatype: string
+    secret: true
+    description: "Slack bot token (xoxb-...) for posting digest to a channel. Same token as SLACK_BOT_TOKEN — use a separate variable name to avoid conflicts with the Astropods Slack adapter."
+    optional: true
+    display-as: short-text
+  SLACK_CHANNEL_ID:
+    name: SLACK_CHANNEL_ID
+    datatype: string
+    description: "Slack channel ID to post the digest to (e.g. C012AB3CD)"
+    optional: true
+    display-as: short-text
+
+dev:
+  interfaces:
+    messaging:
+      adapters: [web, slack]

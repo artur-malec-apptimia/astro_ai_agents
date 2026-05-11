@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://astropods.ai/schema/package.json
+spec: package/v1
+name: "youtube-comment-analyzer"
+
+agent:
+  build:
+    context: .
+    dockerfile: Dockerfile
+
+models:
+  anthropic:
+    provider: anthropic
+
+inputs:
+  YOUTUBE_API_KEY:
+    name: YOUTUBE_API_KEY
+    datatype: string
+    secret: true
+    description: "YouTube Data API v3 key from Google Cloud Console"
+    display-as: short-text
+  SLACK_BOT_TOKEN:
+    name: SLACK_BOT_TOKEN
+    datatype: string
+    secret: true
+    description: "Slack bot token (xoxb-...) for receiving messages"
+    display-as: short-text
+    optional: true
+  SLACK_APP_TOKEN:
+    name: SLACK_APP_TOKEN
+    datatype: string
+    secret: true
+    description: "Slack app-level token (xapp-...) for Socket Mode connection"
+    display-as: short-text
+    optional: true
+
+dev:
+  interfaces:
+    messaging:
+      adapters: [web, slack]
