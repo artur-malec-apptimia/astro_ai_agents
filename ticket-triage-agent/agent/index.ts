@@ -1,8 +1,8 @@
 import { serve, type AgentAdapter, type StreamHooks, type StreamOptions } from '@astropods/adapter-core';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import axios from 'axios';
 
-const anthropic = new Anthropic();
+const openai = new OpenAI();
 
 // ---------------------------------------------------------------------------
 // Zendesk helpers
@@ -105,88 +105,99 @@ async function notifyHumanAgent(message: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Claude tool definitions
+// OpenAI tool definitions
 // ---------------------------------------------------------------------------
 
-const TOOLS: Anthropic.Tool[] = [
+const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
   {
-    name: 'get_zendesk_ticket',
-    description: 'Get detailed information about a Zendesk ticket by ID.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        ticket_id: { type: 'string', description: 'The Zendesk ticket ID' },
+    type: 'function',
+    function: {
+      name: 'get_zendesk_ticket',
+      description: 'Get detailed information about a Zendesk ticket by ID.',
+      parameters: {
+        type: 'object',
+        properties: { ticket_id: { type: 'string', description: 'The Zendesk ticket ID' } },
+        required: ['ticket_id'],
       },
-      required: ['ticket_id'],
     },
   },
   {
-    name: 'retrieve_embeddings',
-    description: 'Search Pinecone for similar known Q&A pairs using semantic similarity. Returns matches with similarity scores.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        query: { type: 'string', description: 'The question or problem description to search for' },
+    type: 'function',
+    function: {
+      name: 'retrieve_embeddings',
+      description: 'Search Pinecone for similar known Q&A pairs using semantic similarity. Returns matches with similarity scores.',
+      parameters: {
+        type: 'object',
+        properties: { query: { type: 'string', description: 'The question or problem description to search for' } },
+        required: ['query'],
       },
-      required: ['query'],
     },
   },
   {
-    name: 'update_zendesk_ticket',
-    description: 'Update a Zendesk ticket status and post a public reply to the customer. Status meanings: open=pending on support, pending=waiting on customer, solved=customer is happy.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        ticket_id: { type: 'string', description: 'The Zendesk ticket ID' },
-        status: { type: 'string', enum: ['open', 'pending', 'solved'] },
-        comment: { type: 'string', description: 'Public reply to the customer' },
+    type: 'function',
+    function: {
+      name: 'update_zendesk_ticket',
+      description: 'Update a Zendesk ticket status and post a public reply to the customer. Status meanings: open=pending on support, pending=waiting on customer, solved=customer is happy.',
+      parameters: {
+        type: 'object',
+        properties: {
+          ticket_id: { type: 'string', description: 'The Zendesk ticket ID' },
+          status: { type: 'string', enum: ['open', 'pending', 'solved'] },
+          comment: { type: 'string', description: 'Public reply to the customer' },
+        },
+        required: ['ticket_id', 'status', 'comment'],
       },
-      required: ['ticket_id', 'status', 'comment'],
     },
   },
   {
-    name: 'notify_human_agent',
-    description: 'Send a Slack notification to the human support team to escalate a ticket.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        message: { type: 'string', description: 'Escalation message with ticket details and reason' },
+    type: 'function',
+    function: {
+      name: 'notify_human_agent',
+      description: 'Send a Slack notification to the human support team to escalate a ticket.',
+      parameters: {
+        type: 'object',
+        properties: { message: { type: 'string', description: 'Escalation message with ticket details and reason' } },
+        required: ['message'],
       },
-      required: ['message'],
     },
   },
   {
-    name: 'get_solved_ticket_comments',
-    description: 'Get all comments for a solved Zendesk ticket to extract Q&A knowledge.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        ticket_id: { type: 'string', description: 'The Zendesk ticket ID' },
+    type: 'function',
+    function: {
+      name: 'get_solved_ticket_comments',
+      description: 'Get all comments for a solved Zendesk ticket to extract Q&A knowledge.',
+      parameters: {
+        type: 'object',
+        properties: { ticket_id: { type: 'string', description: 'The Zendesk ticket ID' } },
+        required: ['ticket_id'],
       },
-      required: ['ticket_id'],
     },
   },
   {
-    name: 'update_pinecone',
-    description: 'Add a new Q&A pair to the Pinecone knowledge base. Only call this for clean, concise Q&A pairs.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        question: { type: 'string', description: 'The customer question — concise, no superfluous text' },
-        answer: { type: 'string', description: 'The resolution — concise, no superfluous text' },
+    type: 'function',
+    function: {
+      name: 'update_pinecone',
+      description: 'Add a new Q&A pair to the Pinecone knowledge base. Only call this for clean, concise Q&A pairs.',
+      parameters: {
+        type: 'object',
+        properties: {
+          question: { type: 'string', description: 'The customer question — concise, no superfluous text' },
+          answer: { type: 'string', description: 'The resolution — concise, no superfluous text' },
+        },
+        required: ['question', 'answer'],
       },
-      required: ['question', 'answer'],
     },
   },
   {
-    name: 'lookup_zendesk_agent',
-    description: 'Look up a Zendesk user/agent by ID to determine if they are a human agent (not a bot).',
-    input_schema: {
-      type: 'object',
-      properties: {
-        agent_id: { type: 'string', description: 'The Zendesk user/agent ID' },
+    type: 'function',
+    function: {
+      name: 'lookup_zendesk_agent',
+      description: 'Look up a Zendesk user/agent by ID to determine if they are a human agent (not a bot).',
+      parameters: {
+        type: 'object',
+        properties: { agent_id: { type: 'string', description: 'The Zendesk user/agent ID' } },
+        required: ['agent_id'],
       },
-      required: ['agent_id'],
     },
   },
 ];
@@ -220,11 +231,9 @@ Status meanings:
 - solved: customer is happy with the resolution`;
 
 async function runAgentLoop(webhookPayload: unknown, hooks: StreamHooks): Promise<void> {
-  const messages: Anthropic.MessageParam[] = [
-    {
-      role: 'user',
-      content: `Zendesk webhook received:\n\n${JSON.stringify(webhookPayload, null, 2)}`,
-    },
+  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'user', content: `Zendesk webhook received:\n\n${JSON.stringify(webhookPayload, null, 2)}` },
   ];
 
   let iterations = 0;
@@ -233,36 +242,32 @@ async function runAgentLoop(webhookPayload: unknown, hooks: StreamHooks): Promis
   while (iterations < MAX_ITERATIONS) {
     iterations++;
 
-    const response = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
       max_tokens: 2048,
-      system: SYSTEM_PROMPT,
       tools: TOOLS,
       messages,
     });
 
-    for (const block of response.content) {
-      if (block.type === 'text' && block.text) {
-        await hooks.onChunk(block.text);
-      }
+    const message = response.choices[0].message;
+
+    if (message.content) {
+      await hooks.onChunk(message.content);
     }
 
-    if (response.stop_reason === 'end_turn') break;
+    if (response.choices[0].finish_reason === 'stop') break;
 
-    if (response.stop_reason === 'tool_use') {
-      messages.push({ role: 'assistant', content: response.content });
+    if (response.choices[0].finish_reason === 'tool_calls') {
+      messages.push(message);
 
-      const toolResults: Anthropic.ToolResultBlockParam[] = [];
-
-      for (const block of response.content) {
-        if (block.type !== 'tool_use') continue;
-
-        await hooks.onChunk(`\n[${block.name}]...\n`);
+      for (const toolCall of message.tool_calls ?? []) {
+        const name = toolCall.function.name;
+        await hooks.onChunk(`\n[${name}]...\n`);
 
         let result: unknown;
         try {
-          const input = block.input as Record<string, string>;
-          switch (block.name) {
+          const input = JSON.parse(toolCall.function.arguments) as Record<string, string>;
+          switch (name) {
             case 'get_zendesk_ticket':
               result = await getZendeskTicket(input.ticket_id);
               break;
@@ -285,21 +290,19 @@ async function runAgentLoop(webhookPayload: unknown, hooks: StreamHooks): Promis
               result = await lookupZendeskAgent(input.agent_id);
               break;
             default:
-              result = { error: `Unknown tool: ${block.name}` };
+              result = { error: `Unknown tool: ${name}` };
           }
         } catch (err) {
           result = { error: err instanceof Error ? err.message : String(err) };
           await hooks.onChunk(`  error: ${(result as Record<string, string>).error}\n`);
         }
 
-        toolResults.push({
-          type: 'tool_result',
-          tool_use_id: block.id,
+        messages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
           content: JSON.stringify(result),
         });
       }
-
-      messages.push({ role: 'user', content: toolResults });
     } else {
       break;
     }

@@ -8,10 +8,8 @@ agent:
     dockerfile: Dockerfile
 
 models:
-  anthropic:
-    provider: anthropic
-    models:
-      - claude-haiku-4-5-20251001
+  openai:
+    provider: openai
 
 inputs:
   ZENDESK_SUBDOMAIN:
@@ -29,12 +27,6 @@ inputs:
     datatype: string
     secret: true
     description: "Zendesk API token"
-    display-as: short-text
-  OPENAI_API_KEY:
-    name: OPENAI_API_KEY
-    datatype: string
-    secret: true
-    description: "OpenAI API key — used for generating text embeddings (Anthropic does not provide an embeddings API)"
     display-as: short-text
   PINECONE_HOST:
     name: PINECONE_HOST

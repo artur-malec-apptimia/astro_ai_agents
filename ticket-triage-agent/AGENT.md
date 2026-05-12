@@ -48,11 +48,10 @@ Configure a Zendesk webhook to `POST` to your agent's URL on port `3000`:
 
 | Variable | Description |
 |----------|-------------|
-| `ANTHROPIC_API_KEY` | Auto-injected by Astropods |
+| `OPENAI_API_KEY` | Auto-injected by Astropods — used for both reasoning (GPT-4o mini) and embeddings |
 | `ZENDESK_SUBDOMAIN` | The `{subdomain}` in `https://{subdomain}.zendesk.com` |
 | `ZENDESK_AGENT_EMAIL` | Zendesk agent email for API auth |
 | `ZENDESK_API_KEY` | Zendesk API token |
-| `OPENAI_API_KEY` | OpenAI key for text embeddings |
 | `PINECONE_HOST` | Full Pinecone index host URL |
 | `PINECONE_API_KEY` | Pinecone API key |
 
