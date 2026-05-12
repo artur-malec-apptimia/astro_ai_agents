@@ -39,20 +39,6 @@ inputs:
     secret: true
     description: "Pinecone API key"
     display-as: short-text
-  SLACK_BOT_TOKEN:
-    name: SLACK_BOT_TOKEN
-    datatype: string
-    secret: true
-    description: "Slack bot token (xoxb-...) for receiving messages via Socket Mode"
-    display-as: short-text
-    optional: true
-  SLACK_APP_TOKEN:
-    name: SLACK_APP_TOKEN
-    datatype: string
-    secret: true
-    description: "Slack app-level token (xapp-...) for Socket Mode connection"
-    display-as: short-text
-    optional: true
   SLACK_POSTING_TOKEN:
     name: SLACK_POSTING_TOKEN
     datatype: string

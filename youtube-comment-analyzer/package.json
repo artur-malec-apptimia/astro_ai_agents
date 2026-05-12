@@ -8,7 +8,7 @@
   "dependencies": {
     "@astropods/adapter-core": "latest",
     "googleapis": "^144.0.0",
-"@anthropic-ai/sdk": "^0.39.0"
+"openai": "^4.0.0"
   },
   "devDependencies": {
     "@types/bun": "latest",

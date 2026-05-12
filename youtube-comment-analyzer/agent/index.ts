@@ -1,10 +1,10 @@
 import { serve } from '@astropods/adapter-core';
 import type { AgentAdapter, StreamHooks, StreamOptions } from '@astropods/adapter-core';
 import { google } from 'googleapis';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 
 const youtube = google.youtube({ version: 'v3', auth: process.env.YOUTUBE_API_KEY });
-const anthropic = new Anthropic();
+const openai = new OpenAI();
 
 // ---------------------------------------------------------------------------
 // Types
@@ -94,13 +94,15 @@ function parseJsonSentiments(raw: string): Sentiment[] {
 }
 
 async function analyzeBatch(comments: string[]): Promise<Sentiment[]> {
-  const response = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
     max_tokens: 1024,
-    system: SENTIMENT_SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: buildBatchUserMessage(comments) }],
+    messages: [
+      { role: 'system', content: SENTIMENT_SYSTEM_PROMPT },
+      { role: 'user', content: buildBatchUserMessage(comments) },
+    ],
   });
-  const raw = (response.content[0] as { type: 'text'; text: string }).text;
+  const raw = response.choices[0].message.content ?? '';
   return parseJsonSentiments(raw);
 }
 

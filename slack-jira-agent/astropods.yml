@@ -33,20 +33,6 @@ inputs:
     datatype: string
     description: "Jira project key (e.g. 'PROJ')"
     display-as: short-text
-  SLACK_BOT_TOKEN:
-    name: SLACK_BOT_TOKEN
-    datatype: string
-    secret: true
-    description: "Slack bot token (xoxb-...) for reading threads and posting replies"
-    display-as: short-text
-    optional: true
-  SLACK_APP_TOKEN:
-    name: SLACK_APP_TOKEN
-    datatype: string
-    secret: true
-    description: "Slack app-level token (xapp-...) for Socket Mode connection"
-    display-as: short-text
-    optional: true
   SLACK_SUBDOMAIN:
     name: SLACK_SUBDOMAIN
     datatype: string
