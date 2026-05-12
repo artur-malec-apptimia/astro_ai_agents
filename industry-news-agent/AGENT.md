@@ -1,5 +1,5 @@
 ---
-description: "Fetches and summarises industry news from NewsAPI, GNews, The Guardian, and MediaStack using Anthropic Claude."
+description: "Fetches and summarises industry news from NewsAPI, GNews, The Guardian, and MediaStack using GPT-4o mini."
 ---
 
 # Industry News Agent
@@ -25,7 +25,7 @@ electric vehicles Europe
 | `GNEWS_API_KEY` | gnews.io |
 | `GUARDIAN_API_KEY` | open-platform.theguardian.com |
 | `MEDIASTACK_API_KEY` | mediastack.com |
-| `ANTHROPIC_API_KEY` | Auto-injected via `models.anthropic` |
+| `OPENAI_API_KEY` | Auto-injected via `models.openai` |
 
 ## Optional configuration
 

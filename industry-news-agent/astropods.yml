@@ -8,8 +8,8 @@ agent:
     dockerfile: Dockerfile
 
 models:
-  anthropic:
-    provider: anthropic
+  openai:
+    provider: openai
 
 inputs:
   NEWS_API_KEY:

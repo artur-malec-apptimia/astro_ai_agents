@@ -1,9 +1,9 @@
 import { serve } from '@astropods/adapter-core';
 import type { AgentAdapter, StreamHooks, StreamOptions } from '@astropods/adapter-core';
 import axios from 'axios';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 
-const anthropic = new Anthropic();
+const openai = new OpenAI();
 
 // ---------------------------------------------------------------------------
 // Types
@@ -196,14 +196,16 @@ async function summarize(topic: string, articles: Article[], format: OutputForma
     )
     .join('\n\n');
 
-  const response = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
     max_tokens: 1024,
-    system: FORMAT_PROMPTS[format],
-    messages: [{ role: 'user', content: `Topic: "${topic}"\n\nArticles:\n\n${list}` }],
+    messages: [
+      { role: 'system', content: FORMAT_PROMPTS[format] },
+      { role: 'user', content: `Topic: "${topic}"\n\nArticles:\n\n${list}` },
+    ],
   });
 
-  return (response.content[0] as { type: 'text'; text: string }).text;
+  return response.choices[0].message.content ?? '';
 }
 
 // ---------------------------------------------------------------------------
@@ -262,7 +264,7 @@ const adapter: AgentAdapter = {
         return;
       }
 
-      hooks.onChunk('Analysing with Anthropic...\n\n');
+      hooks.onChunk('Analysing with OpenAI...\n\n');
       const summary = await summarize(topic, articles, format);
 
       hooks.onChunk(summary);

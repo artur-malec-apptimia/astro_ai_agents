@@ -7,7 +7,7 @@
   },
   "dependencies": {
     "@astropods/adapter-core": "latest",
-    "@anthropic-ai/sdk": "^0.39.0",
+    "openai": "^4.0.0",
     "axios": "^1.7.0"
   },
   "devDependencies": {
