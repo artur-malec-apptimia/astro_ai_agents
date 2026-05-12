@@ -1,8 +1,8 @@
 import { serve, type AgentAdapter, type StreamHooks, type StreamOptions } from "@astropods/adapter-core";
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import axios from "axios";
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const openai = new OpenAI();
 
 interface JiraTicket {
   title: string;
@@ -58,39 +58,28 @@ async function postSlackReply(channel: string, threadTs: string, text: string): 
 }
 
 async function generateJiraTicket(message: string): Promise<JiraTicket> {
-  const response = await anthropic.messages.create({
-    model: "claude-haiku-4-5-20251001",
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
     max_tokens: 1024,
+    response_format: { type: "json_object" },
     messages: [
       {
-        role: "user",
-        content: `You are a project manager creating Jira tickets. Based on the following problem description or Slack thread, generate a concise Jira ticket title and a detailed description.
-
-Respond ONLY with a JSON object — no markdown, no explanation, no code fences:
-{
+        role: "system",
+        content: `You are a project manager creating Jira tickets. Return ONLY a JSON object with these exact keys:
   "title": "Short, actionable ticket title (max 100 chars)",
-  "description": "Detailed description of the issue, including context, steps to reproduce if applicable, and expected vs actual behavior"
-}
-
-Message/Thread:
-${message}`,
+  "description": "Detailed description of the issue, including context, steps to reproduce if applicable, and expected vs actual behavior"`,
       },
       {
-        role: "assistant",
-        content: "{",
+        role: "user",
+        content: `Message/Thread:\n${message}`,
       },
     ],
   });
 
-  const content = response.content[0];
-  if (content.type !== "text") {
-    throw new Error("Unexpected response type from Claude");
-  }
-
-  const raw = `{${content.text}`;
+  const raw = response.choices[0].message.content ?? "";
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
-    throw new Error(`Could not parse JSON from Claude response. Raw: ${raw.slice(0, 300)}`);
+    throw new Error(`Could not parse JSON from OpenAI response. Raw: ${raw.slice(0, 300)}`);
   }
 
   return JSON.parse(jsonMatch[0]) as JiraTicket;

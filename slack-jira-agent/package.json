@@ -7,7 +7,7 @@
     "start": "bun run agent/index.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
+    "openai": "^4.0.0",
     "@astropods/adapter-core": "latest",
     "axios": "^1.7.0"
   },

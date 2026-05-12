@@ -8,10 +8,8 @@ agent:
     dockerfile: Dockerfile
 
 models:
-  anthropic:
-    provider: anthropic
-    models:
-      - claude-haiku-4-5-20251001
+  openai:
+    provider: openai
 
 inputs:
   JIRA_API_KEY:

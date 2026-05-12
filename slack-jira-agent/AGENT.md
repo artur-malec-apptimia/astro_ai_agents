@@ -9,7 +9,7 @@ Converts Slack problem descriptions or thread content into Jira tickets automati
 ## What it does
 
 1. Receives a message containing a problem description or Slack thread content
-2. Uses Claude Haiku to generate a concise Jira ticket title and detailed description
+2. Uses GPT-4o mini to generate a concise Jira ticket title and detailed description
 3. Creates the ticket in Jira via REST API
 4. Responds with a direct link to the created ticket
 
@@ -24,7 +24,7 @@ Send a message describing the problem or paste a Slack thread. The agent will:
 
 | Variable | Description |
 |----------|-------------|
-| `ANTHROPIC_API_KEY` | Anthropic API key (injected automatically) |
+| `OPENAI_API_KEY` | OpenAI API key (injected automatically) |
 | `JIRA_API_KEY` | Jira API token from https://id.atlassian.com/manage-profile/security/api-tokens |
 | `JIRA_USERNAME` | Jira account email address |
 | `JIRA_SUBDOMAIN` | Jira subdomain (e.g. `mycompany` for `mycompany.atlassian.net`) |
@@ -39,4 +39,4 @@ Send a message describing the problem or paste a Slack thread. The agent will:
 
 ## Model
 
-Uses `claude-haiku-4-5-20251001` for fast, cost-efficient ticket generation.
+Uses `gpt-4o-mini` for fast, cost-efficient ticket generation.
