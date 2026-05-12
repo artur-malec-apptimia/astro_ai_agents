@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "start": "bun run main.ts"
+    "start": "bun run agent/index.ts"
   },
   "dependencies": {
     "@astropods/adapter-core": "latest",
