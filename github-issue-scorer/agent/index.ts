@@ -7,12 +7,17 @@ import { WebClient as SlackClient } from '@slack/web-api';
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 const openai = new OpenAI();
 
+const MAX_ISSUES = 50;
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type Priority = 'high' | 'medium' | 'low';
 type Sentiment = 'frustration' | 'urgency' | 'neutral' | 'positive';
+
+const VALID_PRIORITIES = new Set<string>(['high', 'medium', 'low']);
+const VALID_SENTIMENTS = new Set<string>(['frustration', 'urgency', 'neutral', 'positive']);
 
 interface IssueAnalysis {
   summary: string;
@@ -49,7 +54,7 @@ async function fetchIssues(owner: string, repo: string, maxIssues: number) {
       owner,
       repo,
       state: 'open',
-      per_page: Math.min(30, maxIssues - issues.length + 10),
+      per_page: 100,
       page,
     });
     if (data.length === 0) break;
@@ -57,6 +62,7 @@ async function fetchIssues(owner: string, repo: string, maxIssues: number) {
       if (!issue.pull_request) issues.push(issue);
       if (issues.length >= maxIssues) break;
     }
+    if (data.length < 100) break;
     page++;
   }
 
@@ -95,9 +101,27 @@ async function fetchComments(owner: string, repo: string, issueNumber: number): 
 // LLM analysis
 // ---------------------------------------------------------------------------
 
-function parseJson<T>(raw: string): T {
-  const clean = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
-  return JSON.parse(clean) as T;
+function normalizeAnalysis(raw: unknown): IssueAnalysis {
+  const obj = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const priority = VALID_PRIORITIES.has(String(obj.priority ?? ''))
+    ? (obj.priority as Priority)
+    : 'low';
+  const sentiment = VALID_SENTIMENTS.has(String(obj.sentiment ?? ''))
+    ? (obj.sentiment as Sentiment)
+    : 'neutral';
+  return {
+    summary: typeof obj.summary === 'string' ? obj.summary : '(no summary)',
+    sentiment,
+    sentiment_details: typeof obj.sentiment_details === 'string' ? obj.sentiment_details : '',
+    competitive_mentions: Array.isArray(obj.competitive_mentions)
+      ? obj.competitive_mentions.filter((x): x is string => typeof x === 'string')
+      : [],
+    workarounds: Array.isArray(obj.workarounds)
+      ? obj.workarounds.filter((x): x is string => typeof x === 'string')
+      : [],
+    priority,
+    priority_reason: typeof obj.priority_reason === 'string' ? obj.priority_reason : '',
+  };
 }
 
 const ANALYSIS_SYSTEM_PROMPT = [
@@ -139,8 +163,8 @@ async function analyzeIssue(title: string, body: string, comments: string[]): Pr
       { role: 'user', content: buildUserMessage(title, body, comments) },
     ],
   });
-  const raw = response.choices[0].message.content ?? '';
-  return parseJson<IssueAnalysis>(raw);
+  const raw = JSON.parse(response.choices[0].message.content ?? '{}');
+  return normalizeAnalysis(raw);
 }
 
 // ---------------------------------------------------------------------------
@@ -171,9 +195,11 @@ function formatIssueReport(issue: AnalyzedIssue): string {
 }
 
 function formatFullReport(issues: AnalyzedIssue[], repoName: string): string {
-  const sorted = [...issues].sort(
-    (a, b) => PRIORITY_ORDER[a.analysis.priority] - PRIORITY_ORDER[b.analysis.priority],
-  );
+  const sorted = [...issues].sort((a, b) => {
+    const pa = PRIORITY_ORDER[a.analysis.priority] ?? 2;
+    const pb = PRIORITY_ORDER[b.analysis.priority] ?? 2;
+    return pa - pb;
+  });
 
   const sections = [
     `Issue analysis for \`${repoName}\` — ${issues.length} issue(s)`,
@@ -193,15 +219,40 @@ function formatFullReport(issues: AnalyzedIssue[], repoName: string): string {
 // Slack
 // ---------------------------------------------------------------------------
 
+function splitIntoSlackChunks(text: string, limit = 2900): string[] {
+  const chunks: string[] = [];
+  const lines = text.split('\n');
+  let current = '';
+
+  for (const line of lines) {
+    const candidate = current ? `${current}\n${line}` : line;
+    if (candidate.length > limit) {
+      if (current) chunks.push(current);
+      // If a single line exceeds limit, hard-split it
+      if (line.length > limit) {
+        for (let i = 0; i < line.length; i += limit) {
+          chunks.push(line.slice(i, i + limit));
+        }
+        current = '';
+      } else {
+        current = line;
+      }
+    } else {
+      current = candidate;
+    }
+  }
+
+  if (current) chunks.push(current);
+  return chunks;
+}
+
 async function postToSlack(text: string): Promise<void> {
   const token = process.env.SLACK_POSTING_TOKEN;
   const channel = process.env.SLACK_CHANNEL;
   if (!token || !channel) return;
 
   const slack = new SlackClient(token);
-  // Slack messages have a 3000-char limit per block; split if needed
-  const chunks = text.match(/[\s\S]{1,3000}/g) ?? [text];
-  for (const chunk of chunks) {
+  for (const chunk of splitIntoSlackChunks(text)) {
     await slack.chat.postMessage({ channel, text: chunk });
   }
 }
@@ -270,8 +321,15 @@ const adapter: AgentAdapter = {
         const raw = await fetchSingleIssue(owner, repo, issueNumber);
         analyzed.push(await processIssue(owner, repo, raw, hooks));
       } else {
-        const numMatch = prompt.replace(repoName, '').match(/\b(\d+)\b/);
-        const maxIssues = numMatch ? parseInt(numMatch[1], 10) : 5;
+        const numMatch = prompt.replace(repoName, '').match(/\btop\s+(\d+)\b|\blimit[: ]+(\d+)\b|\b(\d+)\s+issues?\b/i);
+        const requested = numMatch
+          ? parseInt(numMatch[1] ?? numMatch[2] ?? numMatch[3], 10)
+          : 5;
+        const maxIssues = Math.min(Math.max(1, requested), MAX_ISSUES);
+
+        if (requested > MAX_ISSUES) {
+          hooks.onChunk(`Note: capped at ${MAX_ISSUES} issues maximum.\n`);
+        }
 
         hooks.onChunk(`Fetching up to ${maxIssues} open issues from \`${repoName}\`...\n`);
         const issues = await fetchIssues(owner, repo, maxIssues);
