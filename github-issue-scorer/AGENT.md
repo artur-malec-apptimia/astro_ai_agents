@@ -1,20 +1,46 @@
 ---
-description: "Fetches GitHub issues with comments, scores them by priority and sentiment using GPT-4o mini, and posts the report to Slack."
+description: "Fetches GitHub issues with all comments, analyses priority and sentiment using GPT-4o mini, and optionally posts the report to Slack."
 ---
 
 # GitHub Issue Scorer
 
-This agent reviews GitHub issues and comments to generate a summary, sentiment analysis, and urgency score. It considers reactions, tone, comment volume, and competitive mentions helping teams triage faster and flag issues for escalation.
+Analyses GitHub issues to help product teams triage faster. For each issue the agent fetches the full body and all comments, then uses GPT-4o mini to produce a structured report with priority score, sentiment, competitor mentions, and reported workarounds. Results are sorted by priority and optionally posted to a Slack channel.
 
-Trigger the agent using a customizable Slack command, such as /summarize-issue. Then, the agent:
+## Usage
 
-1. Fetches the issue body and all comments, handling pagination automatically
+Send a message via web chat with one of the following formats:
 
-2. Processes the content to:
- - Summarize the overall request or bug report
- - Detect sentiment ( such as frustration, urgency)
- - Count reactions, upvotes, and comment volume
- - Identify competitive mentions or user workarounds
- 
-3. Posts the analysis to a Slack channel or user
+| Message | Effect |
+|---------|--------|
+| `owner/repo` | Analyse top 5 open issues |
+| `owner/repo 20` | Analyse top 20 open issues |
+| `owner/repo#123` | Analyse a single issue |
 
+## What the report includes
+
+For each issue:
+- **Priority** — `HIGH`, `MEDIUM`, or `LOW` with a one-sentence justification
+- **Sentiment** — `FRUSTRATION`, `URGENCY`, `NEUTRAL`, or `POSITIVE` with details
+- **Summary** — 2–3 sentence description of the bug or request
+- **Reactions** — upvotes, total reactions, comment count
+- **Competitor mentions** — other tools users compared against (if any)
+- **Workarounds** — solutions users found themselves (if any)
+
+Issues are sorted high → medium → low in the final report.
+
+## Priority definitions
+
+| Priority | Criteria |
+|----------|----------|
+| `high` | Security vulnerability, data loss, crash, or blocker |
+| `medium` | Significant bug, degraded UX, or important feature request |
+| `low` | Minor bug, cosmetic issue, nice-to-have, or question |
+
+## Environment variables
+
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_KEY` | Auto-injected by Astropods |
+| `GITHUB_TOKEN` | Auto-injected by Astropods GitHub integration |
+| `SLACK_POSTING_TOKEN` | *(optional)* Slack bot token (`xoxb-...`) for posting results to a channel |
+| `SLACK_CHANNEL` | *(optional)* Slack channel ID to post to (e.g. `C1234567890`) |
