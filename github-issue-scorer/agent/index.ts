@@ -133,6 +133,7 @@ async function analyzeIssue(title: string, body: string, comments: string[]): Pr
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     max_tokens: 512,
+    response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: ANALYSIS_SYSTEM_PROMPT },
       { role: 'user', content: buildUserMessage(title, body, comments) },
@@ -290,8 +291,6 @@ const adapter: AgentAdapter = {
       const report = formatFullReport(analyzed, repoName);
 
       hooks.onChunk('\n' + report);
-
-
 
       if (process.env.SLACK_POSTING_TOKEN && process.env.SLACK_CHANNEL) {
         hooks.onChunk(`\n\nPosting to Slack channel \`${process.env.SLACK_CHANNEL}\`...`);
