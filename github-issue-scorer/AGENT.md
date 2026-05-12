@@ -1,5 +1,5 @@
 ---
-description: "Fetches open GitHub issues and prioritizes them as high/medium/low using LLM scoring."
+description: "Fetches GitHub issues with comments, scores them by priority and sentiment using GPT-4o mini, and posts the report to Slack."
 ---
 
 # GitHub Issue Scorer

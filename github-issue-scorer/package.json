@@ -8,7 +8,7 @@
   "dependencies": {
     "@astropods/adapter-core": "latest",
     "@octokit/rest": "^21.0.0",
-    "@anthropic-ai/sdk": "^0.39.0",
+    "openai": "^4.0.0",
 "@slack/web-api": "^7.0.0"
   },
   "devDependencies": {

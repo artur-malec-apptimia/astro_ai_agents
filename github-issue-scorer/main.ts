@@ -1,11 +1,11 @@
 import { serve } from '@astropods/adapter-core';
 import type { AgentAdapter, StreamHooks, StreamOptions } from '@astropods/adapter-core';
 import { Octokit } from '@octokit/rest';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { WebClient as SlackClient } from '@slack/web-api';
 
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-const anthropic = new Anthropic();
+const openai = new OpenAI();
 
 // ---------------------------------------------------------------------------
 // Types
@@ -130,13 +130,15 @@ function buildUserMessage(title: string, body: string, comments: string[]): stri
 }
 
 async function analyzeIssue(title: string, body: string, comments: string[]): Promise<IssueAnalysis> {
-  const response = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
     max_tokens: 512,
-    system: ANALYSIS_SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: buildUserMessage(title, body, comments) }],
+    messages: [
+      { role: 'system', content: ANALYSIS_SYSTEM_PROMPT },
+      { role: 'user', content: buildUserMessage(title, body, comments) },
+    ],
   });
-  const raw = (response.content[0] as { type: 'text'; text: string }).text;
+  const raw = response.choices[0].message.content ?? '';
   return parseJson<IssueAnalysis>(raw);
 }
 

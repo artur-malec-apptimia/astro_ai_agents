@@ -12,8 +12,8 @@ integrations:
     provider: github
 
 models:
-  anthropic:
-    provider: anthropic
+  openai:
+    provider: openai
 
 inputs:
   SLACK_POSTING_TOKEN:
