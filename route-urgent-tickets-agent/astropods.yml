@@ -43,6 +43,7 @@ inputs:
   PAGERDUTY_FROM_EMAIL:
     name: PAGERDUTY_FROM_EMAIL
     datatype: string
+    secret: true
     description: "Email address for PagerDuty From header (required by PagerDuty API)"
     display-as: short-text
 
