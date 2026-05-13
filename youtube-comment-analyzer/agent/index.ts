@@ -4,12 +4,11 @@ import { google } from 'googleapis';
 import OpenAI from 'openai';
 import {
   extractVideoId,
-  normalizeSentiment,
   buildBatchUserMessage,
   parseJsonSentiments,
   formatReport,
 } from './utils';
-import type { SentimentResult } from './utils';
+import type { Sentiment, SentimentResult } from './utils';
 
 const youtube = google.youtube({ version: 'v3', auth: process.env.YOUTUBE_API_KEY });
 const openai = new OpenAI();
@@ -58,7 +57,7 @@ const SENTIMENT_SYSTEM_PROMPT = [
   'neutral  — questions, plain statements, mixed, or off-topic',
 ].join('\n');
 
-async function analyzeBatch(comments: string[]): Promise<ReturnType<typeof normalizeSentiment>[]> {
+async function analyzeBatch(comments: string[]): Promise<Sentiment[]> {
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     max_tokens: 1024,

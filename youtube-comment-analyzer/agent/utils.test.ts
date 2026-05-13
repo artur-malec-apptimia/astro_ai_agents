@@ -168,9 +168,9 @@ describe('formatReport', () => {
       makeResult('c', 'negative'),
     ];
     const report = formatReport(results, 'abc');
-    expect(report).toContain('POSITIVE  2 comments');
-    expect(report).toContain('NEUTRAL   0 comments');
-    expect(report).toContain('NEGATIVE  1 comments');
+    expect(report).toMatch(/POSITIVE\s+2 comments/);
+    expect(report).toMatch(/NEUTRAL\s+0 comments/);
+    expect(report).toMatch(/NEGATIVE\s+1 comments/);
   });
 
   test('shows percentage for each sentiment', () => {
