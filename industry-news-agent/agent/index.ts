@@ -2,20 +2,10 @@ import { serve } from '@astropods/adapter-core';
 import type { AgentAdapter, StreamHooks, StreamOptions } from '@astropods/adapter-core';
 import axios from 'axios';
 import OpenAI from 'openai';
+import { deduplicate, detectFormat } from './utils';
+import type { Article, OutputFormat } from './utils';
 
 const openai = new OpenAI();
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface Article {
-  title: string;
-  url: string;
-  source: string;
-  publishedAt?: string;
-  description?: string;
-}
 
 // ---------------------------------------------------------------------------
 // Source fetchers
@@ -126,39 +116,9 @@ async function fetchAll(topic: string, hooks: StreamHooks): Promise<Article[]> {
   return all;
 }
 
-function deduplicate(articles: Article[]): Article[] {
-  const seen = new Set<string>();
-  return articles.filter(a => {
-    const key = a.title.toLowerCase().trim();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
 // ---------------------------------------------------------------------------
-// Format detection + summary
+// Format prompts + summary
 // ---------------------------------------------------------------------------
-
-type OutputFormat = 'summary' | 'analysis' | 'key insights';
-
-function detectFormat(text: string): { topic: string; format: OutputFormat } {
-  const lower = text.toLowerCase();
-  let format: OutputFormat = 'summary';
-
-  if (lower.includes('analysis') || lower.includes('analyse') || lower.includes('analyze')) {
-    format = 'analysis';
-  } else if (lower.includes('key insight') || lower.includes('insights')) {
-    format = 'key insights';
-  }
-
-  const topic = text
-    .replace(/\b(summary|analysis|analyse|analyze|key insights?)\b/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  return { topic: topic || text.trim(), format };
-}
 
 const FORMAT_PROMPTS: Record<OutputFormat, string> = {
   summary: [
@@ -236,8 +196,8 @@ const adapter: AgentAdapter = {
 
   async stream(prompt: string, hooks: StreamHooks, _options: StreamOptions): Promise<void> {
     try {
-      const raw_prompt = prompt.trim();
-      if (!raw_prompt) {
+      const trimmedPrompt = prompt.trim();
+      if (!trimmedPrompt) {
         hooks.onChunk(
           'Please provide a topic and optional format. Examples:\n' +
           '  AI news\n' +
@@ -248,7 +208,7 @@ const adapter: AgentAdapter = {
         return;
       }
 
-      const { topic, format } = detectFormat(raw_prompt);
+      const { topic, format } = detectFormat(trimmedPrompt);
       hooks.onChunk(`Fetching news for "${topic}" (format: ${format})...\n\n`);
 
       const raw = await fetchAll(topic, hooks);
