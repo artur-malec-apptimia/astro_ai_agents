@@ -1,6 +1,7 @@
 import { serve, type AgentAdapter, type StreamHooks, type StreamOptions } from '@astropods/adapter-core';
 import OpenAI from 'openai';
 import axios from 'axios';
+import { buildZendeskBase, buildZendeskAuth, parseWebhookPayload } from './utils';
 
 const openai = new OpenAI();
 
@@ -9,11 +10,14 @@ const openai = new OpenAI();
 // ---------------------------------------------------------------------------
 
 function zendeskBase(): string {
-  return `https://${process.env.ZENDESK_SUBDOMAIN}.zendesk.com/api/v2`;
+  if (!process.env.ZENDESK_SUBDOMAIN) throw new Error('ZENDESK_SUBDOMAIN is not set');
+  return buildZendeskBase(process.env.ZENDESK_SUBDOMAIN);
 }
 
 function zendeskAuth(): string {
-  return Buffer.from(`${process.env.ZENDESK_AGENT_EMAIL}/token:${process.env.ZENDESK_API_KEY}`).toString('base64');
+  if (!process.env.ZENDESK_AGENT_EMAIL) throw new Error('ZENDESK_AGENT_EMAIL is not set');
+  if (!process.env.ZENDESK_API_KEY) throw new Error('ZENDESK_API_KEY is not set');
+  return buildZendeskAuth(process.env.ZENDESK_AGENT_EMAIL, process.env.ZENDESK_API_KEY);
 }
 
 // ---------------------------------------------------------------------------
@@ -377,27 +381,14 @@ const adapter: AgentAdapter = {
   },
 
   async stream(prompt: string, hooks: StreamHooks, _options: StreamOptions): Promise<void> {
-    let payload: unknown;
-    const text = prompt.trim();
+    const payload = parseWebhookPayload(prompt.trim());
 
-    try {
-      // Try JSON first (webhook payload)
-      payload = JSON.parse(text);
-    } catch {
-      // Plain text — extract ticket ID (number) or treat as search query
-      const idMatch = text.match(/\b(\d+)\b/);
-      if (idMatch) {
-        payload = {
-          type: 'zen:event-type:ticket.created',
-          detail: { id: idMatch[1] },
-        };
-      } else {
-        await hooks.onChunk(
-          'Please send a Zendesk ticket ID (e.g. `12345`) or a full webhook JSON payload.',
-        );
-        hooks.onFinish();
-        return;
-      }
+    if (payload === null) {
+      await hooks.onChunk(
+        'Please send a Zendesk ticket ID (e.g. `12345`) or a full webhook JSON payload.',
+      );
+      hooks.onFinish();
+      return;
     }
 
     await runAgentLoop(payload, hooks);
