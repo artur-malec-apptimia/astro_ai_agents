@@ -44,6 +44,11 @@ describe('deduplicate', () => {
     expect(result.map(a => a.title)).toEqual(['C', 'A', 'B']);
   });
 
+  test('does not deduplicate titles that differ only in internal whitespace', () => {
+    const articles = [makeArticle('AI  News'), makeArticle('AI News')];
+    expect(deduplicate(articles)).toHaveLength(2);
+  });
+
   test('handles empty array', () => {
     expect(deduplicate([])).toEqual([]);
   });
@@ -113,7 +118,7 @@ describe('detectFormat', () => {
   });
 
   test('falls back to original text when topic becomes empty after stripping', () => {
-    expect(detectFormat('analysis').topic).toBe('analysis');
+    expect(detectFormat('summary').topic).toBe('summary');
   });
 
   test('returns trimmed topic', () => {
