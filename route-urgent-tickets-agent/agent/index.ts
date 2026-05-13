@@ -41,10 +41,12 @@ async function updateTicketTags(ticketId: string, tags: string[]): Promise<unkno
 // ---------------------------------------------------------------------------
 
 function pagerdutyHeaders(): Record<string, string> {
+  if (!process.env.PAGERDUTY_API_KEY) throw new Error('PAGERDUTY_API_KEY is not set');
+  if (!process.env.PAGERDUTY_FROM_EMAIL) throw new Error('PAGERDUTY_FROM_EMAIL is not set');
   return {
-    Authorization: `Token token=${process.env.PAGERDUTY_API_KEY ?? ''}`,
+    Authorization: `Token token=${process.env.PAGERDUTY_API_KEY}`,
     Accept: 'application/vnd.pagerduty+json;version=2',
-    From: process.env.PAGERDUTY_FROM_EMAIL ?? '',
+    From: process.env.PAGERDUTY_FROM_EMAIL,
     'Content-Type': 'application/json',
   };
 }
