@@ -195,7 +195,7 @@ async function runAgentLoop(payload: unknown, hooks: StreamHooks): Promise<void>
     const message = response.choices[0].message;
 
     if (message.content) {
-      hooks.onChunk(message.content);
+      await hooks.onChunk(message.content);
     }
 
     if (response.choices[0].finish_reason === 'stop') break;
@@ -205,7 +205,7 @@ async function runAgentLoop(payload: unknown, hooks: StreamHooks): Promise<void>
 
       for (const toolCall of message.tool_calls ?? []) {
         const name = toolCall.function.name;
-        hooks.onChunk(`\n[${name}]...\n`);
+        await hooks.onChunk(`\n[${name}]...\n`);
 
         let result: unknown;
         try {
@@ -235,7 +235,7 @@ async function runAgentLoop(payload: unknown, hooks: StreamHooks): Promise<void>
           }
         } catch (err) {
           result = { error: err instanceof Error ? err.message : String(err) };
-          hooks.onChunk(`  error: ${(result as Record<string, string>).error}\n`);
+          await hooks.onChunk(`  error: ${(result as Record<string, string>).error}\n`);
         }
 
         messages.push({
