@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(~/.bun/bin/bun test:*)",
+      "Bash(/c/Users/artur/AppData/Roaming/sst/bin/bun test:*)"
+    ]
+  }
+}

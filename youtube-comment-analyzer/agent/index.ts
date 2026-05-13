@@ -2,39 +2,21 @@ import { serve } from '@astropods/adapter-core';
 import type { AgentAdapter, StreamHooks, StreamOptions } from '@astropods/adapter-core';
 import { google } from 'googleapis';
 import OpenAI from 'openai';
+import {
+  extractVideoId,
+  normalizeSentiment,
+  buildBatchUserMessage,
+  parseJsonSentiments,
+  formatReport,
+} from './utils';
+import type { SentimentResult } from './utils';
 
 const youtube = google.youtube({ version: 'v3', auth: process.env.YOUTUBE_API_KEY });
 const openai = new OpenAI();
 
 // ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-type Sentiment = 'positive' | 'neutral' | 'negative';
-
-interface SentimentResult {
-  comment: string;
-  sentiment: Sentiment;
-}
-
-// ---------------------------------------------------------------------------
 // YouTube helpers
 // ---------------------------------------------------------------------------
-
-function extractVideoId(input: string): string | null {
-  const short = input.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
-  if (short) return short[1];
-
-  const watch = input.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
-  if (watch) return watch[1];
-
-  const shorts = input.match(/shorts\/([a-zA-Z0-9_-]{11})/);
-  if (shorts) return shorts[1];
-
-  if (/^[a-zA-Z0-9_-]{11}$/.test(input.trim())) return input.trim();
-
-  return null;
-}
 
 async function fetchComments(videoId: string, maxComments: number): Promise<string[]> {
   const comments: string[] = [];
@@ -76,24 +58,7 @@ const SENTIMENT_SYSTEM_PROMPT = [
   'neutral  — questions, plain statements, mixed, or off-topic',
 ].join('\n');
 
-function buildBatchUserMessage(comments: string[]): string {
-  return JSON.stringify(comments.map((c, i) => `${i + 1}. ${c.slice(0, 300)}`));
-}
-
-const VALID_SENTIMENTS = new Set<string>(['positive', 'neutral', 'negative']);
-
-function normalizeSentiment(value: unknown): Sentiment {
-  const s = String(value ?? '').toLowerCase().trim();
-  return VALID_SENTIMENTS.has(s) ? (s as Sentiment) : 'neutral';
-}
-
-function parseJsonSentiments(raw: string): Sentiment[] {
-  const clean = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
-  const parsed = JSON.parse(clean) as { sentiments: unknown[] };
-  return parsed.sentiments.map(normalizeSentiment);
-}
-
-async function analyzeBatch(comments: string[]): Promise<Sentiment[]> {
+async function analyzeBatch(comments: string[]): Promise<ReturnType<typeof normalizeSentiment>[]> {
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     max_tokens: 1024,
@@ -125,45 +90,6 @@ async function analyzeAllComments(
   }
 
   return results;
-}
-
-// ---------------------------------------------------------------------------
-// Report
-// ---------------------------------------------------------------------------
-
-function formatReport(results: SentimentResult[], videoId: string): string {
-  const counts: Record<Sentiment, number> = { positive: 0, neutral: 0, negative: 0 };
-  const examples: Record<Sentiment, string[]> = { positive: [], neutral: [], negative: [] };
-
-  for (const r of results) {
-    counts[r.sentiment]++;
-    if (examples[r.sentiment].length < 3) {
-      examples[r.sentiment].push(r.comment.slice(0, 160).replace(/\n/g, ' '));
-    }
-  }
-
-  const total = results.length;
-  const pct = (n: number) => total > 0 ? `${Math.round((n / total) * 100)}%` : '0%';
-
-  const section = (label: string, prefix: string, sentiment: Sentiment) => [
-    `${label}  ${counts[sentiment]} comments (${pct(counts[sentiment])})`,
-    ...examples[sentiment].map(e => `  ${prefix} "${e}"`),
-  ];
-
-  return [
-    `YouTube Comment Sentiment Analysis`,
-    `Video : https://youtube.com/watch?v=${videoId}`,
-    `Total : ${total} comments analysed`,
-    '='.repeat(65),
-    '',
-    ...section('POSITIVE', '+', 'positive'),
-    '',
-    ...section('NEUTRAL ', '~', 'neutral'),
-    '',
-    ...section('NEGATIVE', '-', 'negative'),
-    '',
-    '='.repeat(65),
-  ].join('\n');
 }
 
 // ---------------------------------------------------------------------------
