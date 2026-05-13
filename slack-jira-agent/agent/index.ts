@@ -1,30 +1,10 @@
 import { serve, type AgentAdapter, type StreamHooks, type StreamOptions } from "@astropods/adapter-core";
 import OpenAI from "openai";
 import axios from "axios";
+import { parseSlackThreadUrl } from "./utils";
+import type { JiraTicket, SlackMessage } from "./utils";
 
 const openai = new OpenAI();
-
-interface JiraTicket {
-  title: string;
-  description: string;
-}
-
-interface SlackMessage {
-  user?: string;
-  text?: string;
-  ts?: string;
-}
-
-// Parses a Slack thread URL into channel and thread_ts.
-// Supports: https://{workspace}.slack.com/archives/{channel}/p{ts_no_dot}
-function parseSlackThreadUrl(input: string): { channel: string; threadTs: string } | null {
-  const match = input.match(/slack\.com\/archives\/([A-Z0-9]+)\/p(\d+)/i);
-  if (!match) return null;
-  const channel = match[1];
-  const raw = match[2];
-  const threadTs = `${raw.slice(0, -6)}.${raw.slice(-6)}`;
-  return { channel, threadTs };
-}
 
 async function fetchSlackThread(channel: string, threadTs: string): Promise<string> {
   const token = process.env.SLACK_BOT_TOKEN;
@@ -77,12 +57,7 @@ async function generateJiraTicket(message: string): Promise<JiraTicket> {
   });
 
   const raw = response.choices[0].message.content ?? "";
-  const jsonMatch = raw.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error(`Could not parse JSON from OpenAI response. Raw: ${raw.slice(0, 300)}`);
-  }
-
-  return JSON.parse(jsonMatch[0]) as JiraTicket;
+  return JSON.parse(raw) as JiraTicket;
 }
 
 async function createJiraTicket(ticket: JiraTicket): Promise<string> {
@@ -142,7 +117,7 @@ const adapter: AgentAdapter = {
 
   getConfig() {
     return {
-      systemPrompt: "Converts Slack problem descriptions or thread content into Jira tickets using Claude Haiku.",
+      systemPrompt: "Converts Slack problem descriptions or thread content into Jira tickets using GPT-4o mini.",
       tools: [],
     };
   },
