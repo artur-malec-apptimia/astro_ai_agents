@@ -1,0 +1,18 @@
+{
+  "name": "route-urgent-tickets-agent",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "bun run agent/index.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "openai": "^4.0.0",
+    "@astropods/adapter-core": "latest",
+    "axios": "^1.7.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.4.0"
+  }
+}
