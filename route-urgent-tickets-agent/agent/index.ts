@@ -77,3 +77,175 @@ async function createPagerdutyIncident(
   );
   return data.incident;
 }
+
+// ---------------------------------------------------------------------------
+// OpenAI tool definitions
+// ---------------------------------------------------------------------------
+
+const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'list_zendesk_tags',
+      description: 'Fetch all existing Zendesk tags so you can pick from real ones.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_ticket_tags',
+      description: 'Apply selected tags to a Zendesk ticket.',
+      parameters: {
+        type: 'object',
+        properties: {
+          ticket_id: { type: 'string', description: 'The Zendesk ticket ID' },
+          tags: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Tags to apply to the ticket',
+          },
+        },
+        required: ['ticket_id', 'tags'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_pagerduty_services',
+      description: 'Fetch available PagerDuty services to find the right team to route to.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_pagerduty_incident',
+      description: 'Create a PagerDuty incident for an urgent ticket.',
+      parameters: {
+        type: 'object',
+        properties: {
+          service_id: {
+            type: 'string',
+            description: 'The PagerDuty service ID to route to',
+          },
+          title: { type: 'string', description: 'Concise incident title' },
+          description: {
+            type: 'string',
+            description: 'Incident description — include the Zendesk ticket URL',
+          },
+        },
+        required: ['service_id', 'title', 'description'],
+      },
+    },
+  },
+];
+
+// ---------------------------------------------------------------------------
+// System prompt
+// ---------------------------------------------------------------------------
+
+const SYSTEM_PROMPT = `You are a support ticket routing agent for Zendesk.
+
+When you receive a ticket ID and description:
+
+1. Fetch all available Zendesk tags using list_zendesk_tags
+2. Analyse the description and select the most relevant tags
+3. Update the ticket with those tags using update_ticket_tags
+4. Assess urgency — if the ticket is high-priority or urgent (e.g. outage, service down, security vulnerability, data loss, P1/P2):
+   a. Fetch PagerDuty services using list_pagerduty_services
+   b. Select the most appropriate service based on the tags and description (e.g. IAM team, Platform team)
+   c. Create a PagerDuty incident using create_pagerduty_incident — use a concise title and set the description to the Zendesk ticket URL
+5. If the ticket is standard priority, stop after updating tags.
+
+Respond with a brief summary: the tags applied, urgency level, and whether a PagerDuty incident was created.`;
+
+// ---------------------------------------------------------------------------
+// Agentic loop
+// ---------------------------------------------------------------------------
+
+async function runAgentLoop(payload: unknown, hooks: StreamHooks): Promise<void> {
+  const p = payload as { detail?: { id?: string; description?: string } };
+  const ticketId = p?.detail?.id ?? 'unknown';
+  const description = p?.detail?.description ?? '';
+  const ticketUrl = `${process.env.ZENDESK_TICKET_URL ?? ''}/${ticketId}`;
+
+  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+    { role: 'system', content: SYSTEM_PROMPT },
+    {
+      role: 'user',
+      content: `Ticket ID: ${ticketId}\nDescription: ${description}\nZendesk ticket URL: ${ticketUrl}`,
+    },
+  ];
+
+  let iterations = 0;
+  const MAX_ITERATIONS = 10;
+
+  while (iterations < MAX_ITERATIONS) {
+    iterations++;
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4.1',
+      max_tokens: 1024,
+      tools: TOOLS,
+      messages,
+    });
+
+    const message = response.choices[0].message;
+
+    if (message.content) {
+      hooks.onChunk(message.content);
+    }
+
+    if (response.choices[0].finish_reason === 'stop') break;
+
+    if (response.choices[0].finish_reason === 'tool_calls') {
+      messages.push(message);
+
+      for (const toolCall of message.tool_calls ?? []) {
+        const name = toolCall.function.name;
+        hooks.onChunk(`\n[${name}]...\n`);
+
+        let result: unknown;
+        try {
+          const input = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
+          switch (name) {
+            case 'list_zendesk_tags':
+              result = await listZendeskTags();
+              break;
+            case 'update_ticket_tags':
+              result = await updateTicketTags(
+                input.ticket_id as string,
+                input.tags as string[],
+              );
+              break;
+            case 'list_pagerduty_services':
+              result = await listPagerdutyServices();
+              break;
+            case 'create_pagerduty_incident':
+              result = await createPagerdutyIncident(
+                input.service_id as string,
+                input.title as string,
+                input.description as string,
+              );
+              break;
+            default:
+              result = { error: `Unknown tool: ${name}` };
+          }
+        } catch (err) {
+          result = { error: err instanceof Error ? err.message : String(err) };
+          hooks.onChunk(`  error: ${(result as Record<string, string>).error}\n`);
+        }
+
+        messages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: JSON.stringify(result),
+        });
+      }
+    } else {
+      break;
+    }
+  }
+}
