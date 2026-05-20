@@ -1,0 +1,17 @@
+{
+  "name": "incident-manager-agent",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "bun run agent/index.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "openai": "^4.0.0",
+    "@astropods/adapter-core": "latest"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.4.0"
+  }
+}
