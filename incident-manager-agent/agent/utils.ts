@@ -56,7 +56,7 @@ export async function getSlackChannelMessages(
 ): Promise<{ ts: string; user: string; text: string }[]> {
   const res = await fetch(
     `https://slack.com/api/conversations.history?channel=${channelId}`,
-    { headers: { Authorization: `Bearer ${token}` } },
+    { headers: slackHeaders(token) },
   );
   if (!res.ok) throw new Error(`Slack API error: ${res.status}`);
   const data = (await res.json()) as {
