@@ -1,0 +1,20 @@
+{
+  "name": "trip-planner",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Trip planning agent — Astropods port of the Postman trip-planner template",
+  "scripts": {
+    "dev": "bun --watch agent/index.ts",
+    "start": "bun agent/index.ts",
+    "test": "bun test"
+  },
+  "main": "./agent/index.ts",
+  "dependencies": {
+    "@astropods/adapter-core": "latest",
+    "openai": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.14",
+    "typescript": "^5.9.3"
+  }
+}
