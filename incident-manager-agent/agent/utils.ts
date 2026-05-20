@@ -211,13 +211,14 @@ export async function updateIncidentInNotion(
 
   // Archive existing blocks
   await Promise.all(
-    blocksData.results.map((block) =>
-      fetch(`https://api.notion.com/v1/blocks/${block.id}`, {
+    blocksData.results.map(async (block) => {
+      const archiveRes = await fetch(`https://api.notion.com/v1/blocks/${block.id}`, {
         method: 'PATCH',
         headers: notionHeaders(apiKey),
         body: JSON.stringify({ archived: true }),
-      }),
-    ),
+      });
+      if (!archiveRes.ok) throw new Error(`Notion API error: ${archiveRes.status}`);
+    }),
   );
 
   // Append fresh summary blocks
