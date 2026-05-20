@@ -2,7 +2,14 @@
   "permissions": {
     "allow": [
       "Bash(~/.bun/bin/bun test:*)",
-      "Bash(/c/Users/artur/AppData/Roaming/sst/bin/bun test:*)"
+      "Bash(/c/Users/artur/AppData/Roaming/sst/bin/bun test:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(/c/Users/artur/AppData/Roaming/sst/bin/bun run:*)",
+      "Bash(bun test:*)",
+      "Read(//c/Users/**)",
+      "Bash(ls /c/Program*/bun*)",
+      "Bash(/c/Users/artur/AppData/Roaming/sst/bin/bun.exe test:*)"
     ]
   }
 }
