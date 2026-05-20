@@ -247,3 +247,79 @@ async function runAgentLoop(prompt: string, hooks: StreamHooks): Promise<void> {
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Slack webhook HTTP server (port 3000)
+// ---------------------------------------------------------------------------
+
+function startWebhookServer(): void {
+  try {
+    Bun.serve({
+      port: 3000,
+      async fetch(req) {
+        if (req.method !== 'POST') {
+          return new Response('Method Not Allowed', { status: 405 });
+        }
+
+        let payload: unknown;
+        try {
+          payload = await req.json();
+        } catch {
+          return new Response('Invalid JSON', { status: 400 });
+        }
+
+        // Respond immediately to Slack (<3s required), process async
+        runAgentLoop(JSON.stringify(payload), {
+          onChunk: (text) => { process.stdout.write(text); },
+          onError: (err) => { console.error('Agent error:', err.message); },
+          onFinish: () => { console.log('\nAgent finished.'); },
+          onStatusUpdate: () => {},
+          onTranscript: () => {},
+          onAudioChunk: () => {},
+          onAudioEnd: () => {},
+        }).catch((err) => console.error('Unhandled error:', err));
+
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      },
+    });
+
+    console.log('Slack webhook server listening on :3000');
+  } catch (err) {
+    console.error('Failed to start webhook server:', err);
+  }
+}
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection:', reason);
+});
+
+// ---------------------------------------------------------------------------
+// Astropods adapter (web chat / Slack)
+// ---------------------------------------------------------------------------
+
+const adapter: AgentAdapter = {
+  name: 'incident-manager-agent',
+
+  getConfig() {
+    return {
+      systemPrompt:
+        'Manages Slack incidents and Notion incident logs. Send a Slack slash command payload or message event JSON.',
+      tools: [],
+    };
+  },
+
+  async stream(prompt: string, hooks: StreamHooks, _options: StreamOptions): Promise<void> {
+    await runAgentLoop(prompt, hooks);
+    hooks.onFinish();
+  },
+};
+
+startWebhookServer();
+serve(adapter);
