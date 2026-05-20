@@ -19,7 +19,7 @@ Provide a destination, travel dates, and any preferences. The agent will researc
 ## Required configuration
 
 Run `ast project configure` to set:
-- `ANTHROPIC_API_KEY`
+- `OPENAI_API_KEY`
 - `YELP_API_KEY`
 - `NOTION_BEARER_TOKEN`
 - `NOTION_PARENT_PAGE_ID`
