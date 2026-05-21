@@ -1,5 +1,11 @@
 import { serve } from '@astropods/adapter-core';
-import type { AgentAdapter, StreamHooks, StreamOptions } from '@astropods/adapter-core';
+import { MastraAdapter } from '@astropods/adapter-mastra';
+import { Agent } from '@mastra/core/agent';
+import { Mastra } from '@mastra/core/mastra';
+import { Memory } from '@mastra/memory';
+import { LibSQLStore } from '@mastra/libsql';
+import { createTool } from '@mastra/core/tools';
+import { z } from 'zod';
 import axios from 'axios';
 import OpenAI from 'openai';
 import { deduplicate, detectFormat } from './utils';
@@ -97,7 +103,7 @@ const SOURCES: [string, (topic: string) => Promise<Article[]>][] = [
   ['MediaStack', fetchMediaStack],
 ];
 
-async function fetchAll(topic: string, hooks: StreamHooks): Promise<Article[]> {
+async function fetchAll(topic: string): Promise<Article[]> {
   const results = await Promise.allSettled(SOURCES.map(([, fn]) => fn(topic)));
   const all: Article[] = [];
 
@@ -105,11 +111,10 @@ async function fetchAll(topic: string, hooks: StreamHooks): Promise<Article[]> {
     const [name] = SOURCES[i];
     const result = results[i];
     if (result.status === 'fulfilled') {
-      hooks.onChunk(`  + ${name}: ${result.value.length} article(s)\n`);
       all.push(...result.value);
     } else {
       const msg = result.reason?.response?.data?.message ?? result.reason?.message ?? 'unknown error';
-      hooks.onChunk(`  - ${name}: failed (${msg})\n`);
+      console.error(`[${name}] fetch failed: ${msg}`);
     }
   }
 
@@ -169,85 +174,57 @@ async function summarize(topic: string, articles: Article[], format: OutputForma
 }
 
 // ---------------------------------------------------------------------------
-// Slack (optional)
+// Mastra tool
 // ---------------------------------------------------------------------------
 
-async function postToSlack(text: string): Promise<void> {
-  const token = process.env.SLACK_POSTING_TOKEN;
-  const channel = process.env.SLACK_CHANNEL_ID;
-  if (!token || !channel) return;
+const fetchIndustryNews = createTool({
+  id: 'fetch_industry_news',
+  description:
+    'Fetch and summarise industry news from NewsAPI, GNews, The Guardian, and MediaStack. ' +
+    'Call this for any news topic. Append "analysis" or "key insights" to the query to change output format.',
+  inputSchema: z.object({
+    query: z
+      .string()
+      .describe(
+        'User query including topic and optional format keyword, e.g. "AI news", ' +
+        '"startup funding analysis", "fintech key insights"',
+      ),
+  }),
+  execute: async ({ query }: { query: string }) => {
+    const { topic, format } = detectFormat(query);
+    const raw = await fetchAll(topic);
+    const articles = deduplicate(raw);
 
-  const chunks = text.match(/[\s\S]{1,3000}/g) ?? [text];
-  for (const chunk of chunks) {
-    await axios.post(
-      'https://slack.com/api/chat.postMessage',
-      { channel, text: chunk },
-      { headers: { Authorization: `Bearer ${token}` } },
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Adapter
-// ---------------------------------------------------------------------------
-
-const adapter: AgentAdapter = {
-  name: 'industry-news-agent',
-
-  async stream(prompt: string, hooks: StreamHooks, _options: StreamOptions): Promise<void> {
-    try {
-      const trimmedPrompt = prompt.trim();
-      if (!trimmedPrompt) {
-        hooks.onChunk(
-          'Please provide a topic and optional format. Examples:\n' +
-          '  AI news\n' +
-          '  startup funding analysis\n' +
-          '  fintech key insights',
-        );
-        hooks.onFinish();
-        return;
-      }
-
-      const { topic, format } = detectFormat(trimmedPrompt);
-      hooks.onChunk(`Fetching news for "${topic}" (format: ${format})...\n\n`);
-
-      const raw = await fetchAll(topic, hooks);
-      const articles = deduplicate(raw);
-
-      hooks.onChunk(
-        `\nTotal: ${raw.length} articles fetched, ${articles.length} after deduplication.\n\n`,
-      );
-
-      if (articles.length === 0) {
-        hooks.onChunk('No articles found for this topic.');
-        hooks.onFinish();
-        return;
-      }
-
-      hooks.onChunk('Analysing with OpenAI...\n\n');
-      const summary = await summarize(topic, articles, format);
-
-      hooks.onChunk(summary);
-
-      if (process.env.SLACK_POSTING_TOKEN && process.env.SLACK_CHANNEL_ID) {
-        hooks.onChunk(`\n\nPosting to Slack...`);
-        await postToSlack(`*Industry news: ${topic}*\n\n${summary}`);
-        hooks.onChunk(' Done.');
-      }
-
-      hooks.onFinish();
-    } catch (error) {
-      hooks.onError(error instanceof Error ? error : new Error(String(error)));
+    if (articles.length === 0) {
+      return 'No articles found for this topic. Try a broader search term.';
     }
-  },
 
-  getConfig() {
-    return {
-      systemPrompt:
-        'Monitors industry news across NewsAPI, GNews, The Guardian, and MediaStack. Deduplicates and summarises results using OpenAI.',
-      tools: [],
-    };
+    return summarize(topic, articles, format);
   },
-};
+});
 
-serve(adapter);
+// ---------------------------------------------------------------------------
+// Mastra agent
+// ---------------------------------------------------------------------------
+
+const memory = new Memory({
+  storage: new LibSQLStore({ id: 'memory', url: ':memory:' }),
+});
+
+const agent = new Agent({
+  id: 'industry-news-agent',
+  name: 'Industry News Agent',
+  instructions: `You are an industry news analyst. When a user provides a topic, pass their full query to the fetch_industry_news tool and return the result verbatim.
+
+The tool automatically detects output format from keywords in the query:
+- "AI news" → summary (default)
+- "startup funding analysis" → deep analytical breakdown
+- "fintech key insights" → actionable bullet points`,
+  model: 'openai/gpt-4o-mini',
+  memory,
+  tools: { fetch_industry_news: fetchIndustryNews },
+});
+
+new Mastra({ agents: { 'industry-news-agent': agent } });
+
+serve(new MastraAdapter(agent));

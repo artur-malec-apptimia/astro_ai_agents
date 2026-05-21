@@ -6,6 +6,8 @@ agent:
   build:
     context: .
     dockerfile: Dockerfile
+  interfaces:
+    messaging: true
 
 models:
   openai:
@@ -36,21 +38,10 @@ inputs:
     secret: true
     description: "MediaStack API key (mediastack.com)"
     display-as: short-text
-  SLACK_POSTING_TOKEN:
-    name: SLACK_POSTING_TOKEN
-    datatype: string
-    secret: true
-    description: "Slack bot token (xoxb-...) for posting digest to a channel. Same token as SLACK_BOT_TOKEN — use a separate variable name to avoid conflicts with the Astropods Slack adapter."
-    optional: true
-    display-as: short-text
-  SLACK_CHANNEL_ID:
-    name: SLACK_CHANNEL_ID
-    datatype: string
-    description: "Slack channel ID to post the digest to (e.g. C012AB3CD)"
-    optional: true
-    display-as: short-text
-
 dev:
   interfaces:
     messaging:
       adapters: [web, slack]
+      slack:
+        socket_mode: true
+        auto_thread: true
