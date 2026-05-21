@@ -6,6 +6,8 @@ agent:
   build:
     context: .
     dockerfile: Dockerfile
+  interfaces:
+    messaging: true
 
 models:
   openai:
@@ -23,3 +25,6 @@ dev:
   interfaces:
     messaging:
       adapters: [web, slack]
+      slack:
+        socket_mode: true
+        auto_thread: true

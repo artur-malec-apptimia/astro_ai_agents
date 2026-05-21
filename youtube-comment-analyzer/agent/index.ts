@@ -1,5 +1,11 @@
 import { serve } from '@astropods/adapter-core';
-import type { AgentAdapter, StreamHooks, StreamOptions } from '@astropods/adapter-core';
+import { MastraAdapter } from '@astropods/adapter-mastra';
+import { Agent } from '@mastra/core/agent';
+import { Mastra } from '@mastra/core/mastra';
+import { Memory } from '@mastra/memory';
+import { LibSQLStore } from '@mastra/libsql';
+import { createTool } from '@mastra/core/tools';
+import { z } from 'zod';
 import { google } from 'googleapis';
 import OpenAI from 'openai';
 import {
@@ -70,18 +76,12 @@ async function analyzeBatch(comments: string[]): Promise<Sentiment[]> {
   return parseJsonSentiments(raw);
 }
 
-async function analyzeAllComments(
-  comments: string[],
-  hooks: StreamHooks,
-): Promise<SentimentResult[]> {
+async function analyzeAllComments(comments: string[]): Promise<SentimentResult[]> {
   const BATCH_SIZE = 30;
   const results: SentimentResult[] = [];
 
   for (let i = 0; i < comments.length; i += BATCH_SIZE) {
     const batch = comments.slice(i, i + BATCH_SIZE);
-    const end = Math.min(i + BATCH_SIZE, comments.length);
-    hooks.onChunk(`  Analysing comments ${i + 1}–${end} of ${comments.length}...\n`);
-
     const sentiments = await analyzeBatch(batch);
     for (let j = 0; j < batch.length; j++) {
       results.push({ comment: batch[j], sentiment: sentiments[j] ?? 'neutral' });
@@ -92,55 +92,68 @@ async function analyzeAllComments(
 }
 
 // ---------------------------------------------------------------------------
-// Adapter
+// Mastra tool
 // ---------------------------------------------------------------------------
 
-const adapter: AgentAdapter = {
-  name: 'youtube-comment-analyzer',
-
-  async stream(prompt: string, hooks: StreamHooks, _options: StreamOptions): Promise<void> {
-    try {
-      const videoId = extractVideoId(prompt.trim());
-      if (!videoId) {
-        hooks.onChunk(
-          'Please provide a YouTube video URL or ID. Examples:\n' +
-          '  https://www.youtube.com/watch?v=dQw4w9WgXcQ\n' +
-          '  https://youtu.be/dQw4w9WgXcQ\n' +
-          '  dQw4w9WgXcQ',
-        );
-        hooks.onFinish();
-        return;
-      }
-
-      const numMatch = prompt.replace(videoId, '').match(/\b(\d+)\b/);
-      const maxComments = numMatch ? parseInt(numMatch[1], 10) : 100;
-
-      hooks.onChunk(`Fetching up to ${maxComments} comments for \`${videoId}\`...\n`);
-      const comments = await fetchComments(videoId, maxComments);
-
-      if (comments.length === 0) {
-        hooks.onChunk('No comments found — comments may be disabled for this video.');
-        hooks.onFinish();
-        return;
-      }
-
-      hooks.onChunk(`Fetched ${comments.length} comment(s). Analysing sentiment...\n\n`);
-      const results = await analyzeAllComments(comments, hooks);
-
-      hooks.onChunk('\n' + formatReport(results, videoId));
-      hooks.onFinish();
-    } catch (error) {
-      hooks.onError(error instanceof Error ? error : new Error(String(error)));
+const analyzeYoutubeComments = createTool({
+  id: 'analyze_youtube_comments',
+  description:
+    'Fetch YouTube video comments and classify each as positive, neutral, or negative. ' +
+    'Call this whenever the user provides a YouTube video URL or ID.',
+  inputSchema: z.object({
+    video_url_or_id: z
+      .string()
+      .describe('YouTube video URL (any format) or bare 11-character video ID'),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(500)
+      .optional()
+      .describe('Max comments to fetch (default 100)'),
+  }),
+  execute: async ({ video_url_or_id, limit = 100 }: { video_url_or_id: string; limit?: number }) => {
+    const videoId = extractVideoId(video_url_or_id);
+    if (!videoId) {
+      return (
+        'Could not extract a video ID from the input. Please provide a YouTube URL or an 11-character video ID.'
+      );
     }
-  },
 
-  getConfig() {
-    return {
-      systemPrompt:
-        'Analyses YouTube video comments and classifies each as positive, neutral, or negative. Returns a summary with counts, percentages, and examples.',
-      tools: [],
-    };
-  },
-};
+    const comments = await fetchComments(videoId, limit);
+    if (comments.length === 0) {
+      return 'No comments found — comments may be disabled for this video.';
+    }
 
-serve(adapter);
+    const results = await analyzeAllComments(comments);
+    return formatReport(results, videoId);
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Mastra agent
+// ---------------------------------------------------------------------------
+
+const memory = new Memory({
+  storage: new LibSQLStore({ id: 'memory', url: ':memory:' }),
+});
+
+const agent = new Agent({
+  id: 'youtube-comment-analyzer',
+  name: 'YouTube Comment Analyzer',
+  instructions: `You are a YouTube comment sentiment analyzer. When a user provides a YouTube video URL or ID, call the analyze_youtube_comments tool with the full URL or ID. Return the tool output verbatim without reformatting.
+
+Supported input formats:
+- https://www.youtube.com/watch?v=VIDEO_ID
+- https://youtu.be/VIDEO_ID
+- https://www.youtube.com/shorts/VIDEO_ID
+- VIDEO_ID (bare 11-character ID)
+- VIDEO_ID 200 (with optional comment limit)`,
+  model: 'openai/gpt-4o-mini',
+  memory,
+  tools: { analyze_youtube_comments: analyzeYoutubeComments },
+});
+
+new Mastra({ agents: { 'youtube-comment-analyzer': agent } });
+
+serve(new MastraAdapter(agent));
