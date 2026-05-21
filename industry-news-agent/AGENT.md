@@ -15,7 +15,7 @@ capabilities:
   - "Degrade gracefully when individual sources are unavailable"
 repository:
   type: github
-  url: https://github.com/artur-malec-apptimia/agents
+  url: https://github.com/astropods/agents
   directory: industry-news-agent
 integrations:
   - OpenAI

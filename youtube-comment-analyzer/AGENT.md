@@ -15,7 +15,7 @@ capabilities:
   - "Accept any YouTube URL format or bare video ID"
 repository:
   type: github
-  url: https://github.com/artur-malec-apptimia/agents
+  url: https://github.com/astropods/agents
   directory: youtube-comment-analyzer
 integrations:
   - OpenAI
