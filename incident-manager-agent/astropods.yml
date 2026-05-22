@@ -1,23 +1,19 @@
 # yaml-language-server: $schema=https://astropods.ai/schema/package.json
 spec: package/v1
-name: "incident-manager-agent"
+name: incident-manager-agent
 
 agent:
   build:
     context: .
     dockerfile: Dockerfile
+  interfaces:
+    messaging: true
 
 models:
   openai:
     provider: openai
 
 inputs:
-  SLACK_BOT_TOKEN:
-    name: SLACK_BOT_TOKEN
-    datatype: string
-    secret: true
-    description: "Slack Bot OAuth token"
-    display-as: short-text
   NOTION_API_KEY:
     name: NOTION_API_KEY
     datatype: string
@@ -34,3 +30,6 @@ dev:
   interfaces:
     messaging:
       adapters: [web, slack]
+      slack:
+        socket_mode: true
+        auto_thread: true
