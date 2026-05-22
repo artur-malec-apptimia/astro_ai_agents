@@ -6,6 +6,8 @@ agent:
   build:
     context: .
     dockerfile: Dockerfile
+  interfaces:
+    messaging: true
 
 models:
   openai:
@@ -33,14 +35,10 @@ inputs:
     datatype: string
     description: "Jira project key (e.g. 'PROJ')"
     display-as: short-text
-  SLACK_SUBDOMAIN:
-    name: SLACK_SUBDOMAIN
-    datatype: string
-    description: "Slack workspace subdomain"
-    display-as: short-text
-    optional: true
-
 dev:
   interfaces:
     messaging:
       adapters: [web, slack]
+      slack:
+        socket_mode: true
+        auto_thread: true

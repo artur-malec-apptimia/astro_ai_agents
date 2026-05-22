@@ -1,41 +1,20 @@
-import { serve, type AgentAdapter, type StreamHooks, type StreamOptions } from "@astropods/adapter-core";
+import { serve } from "@astropods/adapter-core";
+import { MastraAdapter } from "@astropods/adapter-mastra";
+import { Agent } from "@mastra/core/agent";
+import { Mastra } from "@mastra/core/mastra";
+import { Memory } from "@mastra/memory";
+import { LibSQLStore } from "@mastra/libsql";
+import { createTool } from "@mastra/core/tools";
+import { z } from "zod";
 import OpenAI from "openai";
 import axios from "axios";
-import { parseSlackThreadUrl } from "./utils";
-import type { JiraTicket, SlackMessage } from "./utils";
+import type { JiraTicket } from "./utils";
 
 const openai = new OpenAI();
 
-async function fetchSlackThread(channel: string, threadTs: string): Promise<string> {
-  const token = process.env.SLACK_BOT_TOKEN;
-  const response = await axios.get("https://slack.com/api/conversations.replies", {
-    headers: { Authorization: `Bearer ${token}` },
-    params: { channel, ts: threadTs },
-  });
-
-  if (!response.data.ok) {
-    throw new Error(`Slack API error: ${response.data.error}`);
-  }
-
-  const messages: SlackMessage[] = response.data.messages ?? [];
-  return messages
-    .map((m) => m.text ?? "")
-    .filter(Boolean)
-    .join("\n");
-}
-
-async function postSlackReply(channel: string, threadTs: string, text: string): Promise<void> {
-  const token = process.env.SLACK_BOT_TOKEN;
-  const response = await axios.post(
-    "https://slack.com/api/chat.postMessage",
-    { channel, thread_ts: threadTs, text },
-    { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
-  );
-
-  if (!response.data.ok) {
-    throw new Error(`Slack post error: ${response.data.error}`);
-  }
-}
+// ---------------------------------------------------------------------------
+// Jira helpers
+// ---------------------------------------------------------------------------
 
 async function generateJiraTicket(message: string): Promise<JiraTicket> {
   const response = await openai.chat.completions.create({
@@ -87,12 +66,7 @@ async function createJiraTicket(ticket: JiraTicket): Promise<string> {
           content: [
             {
               type: "paragraph",
-              content: [
-                {
-                  type: "text",
-                  text: ticket.description,
-                },
-              ],
+              content: [{ type: "text", text: ticket.description }],
             },
           ],
         },
@@ -112,73 +86,46 @@ async function createJiraTicket(ticket: JiraTicket): Promise<string> {
   return `${baseUrl}/browse/${issueKey}`;
 }
 
-const adapter: AgentAdapter = {
-  name: "slack-jira-agent",
+// ---------------------------------------------------------------------------
+// Mastra tool
+// ---------------------------------------------------------------------------
 
-  getConfig() {
-    return {
-      systemPrompt: "Converts Slack problem descriptions or thread content into Jira tickets using GPT-4o mini.",
-      tools: [],
-    };
+const createJiraFromContext = createTool({
+  id: "create_jira_ticket",
+  description:
+    "Generate and create a Jira ticket from a problem description or a Slack thread URL. " +
+    "Call this whenever the user describes an issue or pastes a Slack thread URL.",
+  inputSchema: z.object({
+    text: z
+      .string()
+      .describe(
+        "Problem description or a Slack thread URL (https://workspace.slack.com/archives/.../p...)"
+      ),
+  }),
+  execute: async ({ text }: { text: string }) => {
+    const ticket = await generateJiraTicket(text);
+    const ticketUrl = await createJiraTicket(ticket);
+    return `Jira ticket created: ${ticketUrl}\n\nTitle: ${ticket.title}\n\nDescription: ${ticket.description}`;
   },
+});
 
-  async stream(prompt: string, hooks: StreamHooks, _options: StreamOptions): Promise<void> {
-    const slackToken = process.env.SLACK_BOT_TOKEN;
-    const slackThread = slackToken ? parseSlackThreadUrl(prompt) : null;
+// ---------------------------------------------------------------------------
+// Mastra agent
+// ---------------------------------------------------------------------------
 
-    // --- Slack mode: fetch thread and reply back ---
-    let context = prompt;
-    if (slackThread) {
-      await hooks.onChunk("Fetching Slack thread...\n");
-      try {
-        context = await fetchSlackThread(slackThread.channel, slackThread.threadTs);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        hooks.onError(new Error(`Error fetching Slack thread: ${msg}`));
-        return;
-      }
-    }
+const memory = new Memory({
+  storage: new LibSQLStore({ id: "memory", url: ":memory:" }),
+});
 
-    // --- Generate ticket from context ---
-    await hooks.onChunk("Analyzing the message and generating a Jira ticket...\n");
+const agent = new Agent({
+  id: "slack-jira-agent",
+  name: "Slack to Jira Agent",
+  instructions: `You are an assistant that creates Jira tickets. When a user sends ANY message, immediately call the create_jira_ticket tool with their message and return the result verbatim. Never ask for clarification or additional detail — always create the ticket with whatever information is provided.`,
+  model: "openai/gpt-4o-mini",
+  memory,
+  tools: { create_jira_ticket: createJiraFromContext },
+});
 
-    let ticket: JiraTicket;
-    try {
-      ticket = await generateJiraTicket(context);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      hooks.onError(new Error(`Error generating ticket content: ${msg}`));
-      return;
-    }
+new Mastra({ agents: { "slack-jira-agent": agent } });
 
-    await hooks.onChunk(`Generated ticket:\n- Title: ${ticket.title}\n\nCreating ticket in Jira...\n`);
-
-    // --- Create Jira ticket ---
-    let ticketUrl: string;
-    try {
-      ticketUrl = await createJiraTicket(ticket);
-    } catch (err) {
-      let msg = err instanceof Error ? err.message : String(err);
-      if (axios.isAxiosError(err) && err.response) {
-        msg += ` — Jira response: ${JSON.stringify(err.response.data)}`;
-      }
-      hooks.onError(new Error(`Error creating Jira ticket: ${msg}`));
-      return;
-    }
-
-    // --- Reply in Slack thread (if applicable) ---
-    if (slackThread) {
-      try {
-        await postSlackReply(slackThread.channel, slackThread.threadTs, `Jira ticket created: ${ticketUrl}`);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        await hooks.onChunk(`Warning: could not post reply to Slack thread: ${msg}\n`);
-      }
-    }
-
-    await hooks.onChunk(`Jira ticket created successfully: ${ticketUrl}`);
-    hooks.onFinish();
-  },
-};
-
-serve(adapter);
+serve(new MastraAdapter(agent));
