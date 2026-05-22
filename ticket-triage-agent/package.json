@@ -7,9 +7,14 @@
     "test": "bun test"
   },
   "dependencies": {
-    "openai": "^4.0.0",
     "@astropods/adapter-core": "latest",
-    "axios": "^1.7.0"
+    "@astropods/adapter-mastra": "latest",
+    "@mastra/core": "latest",
+    "@mastra/memory": "latest",
+    "@mastra/libsql": "latest",
+    "openai": "^4.0.0",
+    "axios": "^1.7.0",
+    "zod": "^3.0.0"
   },
   "devDependencies": {
     "@types/bun": "latest",

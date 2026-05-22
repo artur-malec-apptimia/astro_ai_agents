@@ -1,5 +1,26 @@
 ---
 description: "Automatically triages Zendesk support tickets using AI — resolves with Pinecone knowledge base or escalates to human agents via Slack."
+tags:
+  - zendesk
+  - support
+  - triage
+  - pinecone
+  - openai
+  - customer-support
+capabilities:
+  - "Auto-resolve common support tickets using a Pinecone vector knowledge base"
+  - "Escalate unresolved tickets by notifying via the active adapter (web or Slack)"
+  - "Learn from human-solved tickets by indexing new Q&A pairs into Pinecone"
+  - "Accept Zendesk webhooks directly on port 3000 or ticket IDs via chat"
+repository:
+  type: github
+  url: https://github.com/astropods/agents
+  directory: ticket-triage-agent
+integrations:
+  - OpenAI
+  - Zendesk
+  - Pinecone
+  - Slack (via built-in adapter)
 ---
 
 # Customer Ticket Triage Agent
@@ -12,7 +33,7 @@ Automatically triages incoming Zendesk support tickets. Uses a Pinecone vector k
 1. Fetches full ticket details from Zendesk
 2. Searches Pinecone for similar known Q&A pairs
 3. If confident match found (score > 0.85) — replies professionally and sets status to `pending`
-4. If no confident match — notifies human agents via Slack, sets status to `open`
+4. If no confident match — replies that a human agent will follow up, sets status to `open`
 
 **Solved ticket (`ticket.status_changed → SOLVED`):**
 1. Fetches all ticket comments
@@ -55,9 +76,6 @@ Configure a Zendesk webhook to `POST` to your agent's URL on port `3000`:
 | `PINECONE_HOST` | Full Pinecone index host URL |
 | `PINECONE_API_KEY` | Pinecone API key |
 
-## Optional environment variables
+## Slack integration
 
-| Variable | Description |
-|----------|-------------|
-| `SLACK_POSTING_TOKEN` | Slack bot token for escalation alerts |
-| `SLACK_CHANNEL_ID` | Slack channel ID for escalation alerts |
+Deploy with the Slack adapter to enable direct Slack interaction. When the agent cannot resolve a ticket, it replies in the channel — no separate Slack bot token required. Enable at deploy time via `ast project configure`.

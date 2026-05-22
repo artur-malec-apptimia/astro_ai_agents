@@ -1,7 +1,14 @@
-import { serve, type AgentAdapter, type StreamHooks, type StreamOptions } from '@astropods/adapter-core';
-import OpenAI from 'openai';
-import axios from 'axios';
-import { buildZendeskBase, buildZendeskAuth, parseWebhookPayload } from './utils';
+import { serve } from "@astropods/adapter-core";
+import { MastraAdapter } from "@astropods/adapter-mastra";
+import { Agent } from "@mastra/core/agent";
+import { Mastra } from "@mastra/core/mastra";
+import { Memory } from "@mastra/memory";
+import { LibSQLStore } from "@mastra/libsql";
+import { createTool } from "@mastra/core/tools";
+import { z } from "zod";
+import OpenAI from "openai";
+import axios from "axios";
+import { buildZendeskBase, buildZendeskAuth } from "./utils";
 
 const openai = new OpenAI();
 
@@ -10,207 +17,161 @@ const openai = new OpenAI();
 // ---------------------------------------------------------------------------
 
 function zendeskBase(): string {
-  if (!process.env.ZENDESK_SUBDOMAIN) throw new Error('ZENDESK_SUBDOMAIN is not set');
+  if (!process.env.ZENDESK_SUBDOMAIN) throw new Error("ZENDESK_SUBDOMAIN is not set");
   return buildZendeskBase(process.env.ZENDESK_SUBDOMAIN);
 }
 
 function zendeskAuth(): string {
-  if (!process.env.ZENDESK_AGENT_EMAIL) throw new Error('ZENDESK_AGENT_EMAIL is not set');
-  if (!process.env.ZENDESK_API_KEY) throw new Error('ZENDESK_API_KEY is not set');
+  if (!process.env.ZENDESK_AGENT_EMAIL) throw new Error("ZENDESK_AGENT_EMAIL is not set");
+  if (!process.env.ZENDESK_API_KEY) throw new Error("ZENDESK_API_KEY is not set");
   return buildZendeskAuth(process.env.ZENDESK_AGENT_EMAIL, process.env.ZENDESK_API_KEY);
 }
 
 // ---------------------------------------------------------------------------
-// Tool implementations
+// Embedding helpers
 // ---------------------------------------------------------------------------
-
-async function getZendeskTicket(ticketId: string) {
-  const { data } = await axios.get(`${zendeskBase()}/tickets/${ticketId}`, {
-    headers: { Authorization: `Basic ${zendeskAuth()}` },
-  });
-  return data.ticket;
-}
-
-async function getSolvedTicketComments(ticketId: string) {
-  const { data } = await axios.get(`${zendeskBase()}/tickets/${ticketId}/comments`, {
-    headers: { Authorization: `Basic ${zendeskAuth()}` },
-  });
-  return data.comments;
-}
-
-async function updateZendeskTicket(ticketId: string, status: string, comment: string) {
-  const { data } = await axios.put(
-    `${zendeskBase()}/tickets/${ticketId}`,
-    { ticket: { status, comment: { body: comment, public: true } } },
-    { headers: { Authorization: `Basic ${zendeskAuth()}`, 'Content-Type': 'application/json' } },
-  );
-  return data.ticket;
-}
-
-async function lookupZendeskAgent(agentId: string) {
-  const { data } = await axios.get(`${zendeskBase()}/users/${agentId}`, {
-    headers: { Authorization: `Basic ${zendeskAuth()}` },
-  });
-  return data.user;
-}
 
 async function generateEmbedding(text: string): Promise<number[]> {
-  const { data } = await axios.post(
-    'https://api.openai.com/v1/embeddings',
-    { input: text, model: 'text-embedding-3-small' },
-    { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' } },
-  );
-  return data.data[0].embedding;
+  const response = await openai.embeddings.create({ input: text, model: "text-embedding-3-small" });
+  return response.data[0].embedding;
 }
 
-async function retrieveEmbeddings(query: string, topK = 3) {
-  const vector = await generateEmbedding(query);
+// ---------------------------------------------------------------------------
+// Tools
+// ---------------------------------------------------------------------------
 
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      await new Promise((r) => setTimeout(r, 1500));
-      const { data } = await axios.post(
-        `${process.env.PINECONE_HOST}/query`,
-        { vector, topK, includeMetadata: true },
-        { headers: { 'Api-Key': process.env.PINECONE_API_KEY!, 'Content-Type': 'application/json' } },
-      );
-      return data.matches;
-    } catch (err) {
-      if (axios.isAxiosError(err) && err.response?.status === 429 && attempt < 3) {
-        await new Promise((r) => setTimeout(r, attempt * 5000));
-        continue;
+const getZendeskTicketTool = createTool({
+  id: "get_zendesk_ticket",
+  description: "Get detailed information about a Zendesk ticket by ID.",
+  inputSchema: z.object({
+    ticket_id: z.string().describe("The Zendesk ticket ID"),
+  }),
+  execute: async ({ ticket_id }: { ticket_id: string }) => {
+    const { data } = await axios.get(`${zendeskBase()}/tickets/${ticket_id}`, {
+      headers: { Authorization: `Basic ${zendeskAuth()}` },
+    });
+    return JSON.stringify(data.ticket);
+  },
+});
+
+const retrieveEmbeddingsTool = createTool({
+  id: "retrieve_embeddings",
+  description:
+    "Search Pinecone for similar known Q&A pairs using semantic similarity. Returns matches with similarity scores.",
+  inputSchema: z.object({
+    query: z.string().describe("The question or problem description to search for"),
+  }),
+  execute: async ({ query }: { query: string }) => {
+    const vector = await generateEmbedding(query);
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await new Promise((r) => setTimeout(r, 1500));
+        const { data } = await axios.post(
+          `${process.env.PINECONE_HOST}/query`,
+          { vector, topK: 3, includeMetadata: true },
+          { headers: { "Api-Key": process.env.PINECONE_API_KEY!, "Content-Type": "application/json" } }
+        );
+        return JSON.stringify(data.matches);
+      } catch (err) {
+        if (axios.isAxiosError(err) && err.response?.status === 429 && attempt < 3) {
+          await new Promise((r) => setTimeout(r, attempt * 5000));
+          continue;
+        }
+        throw err;
       }
-      throw err;
     }
-  }
-}
-
-async function updatePinecone(question: string, answer: string) {
-  const vector = await generateEmbedding(question);
-  const id = `ticket-${Date.now()}`;
-  await axios.post(
-    `${process.env.PINECONE_HOST}/vectors/upsert`,
-    { vectors: [{ id, values: vector, metadata: { question, answer } }] },
-    { headers: { 'Api-Key': process.env.PINECONE_API_KEY!, 'Content-Type': 'application/json' } },
-  );
-  return { id, question, answer };
-}
-
-async function notifyHumanAgent(message: string) {
-  const token = process.env.SLACK_POSTING_TOKEN;
-  const channel = process.env.SLACK_CHANNEL_ID;
-  if (!token || !channel) return { ok: false, error: 'Slack not configured' };
-  const { data } = await axios.post(
-    'https://slack.com/api/chat.postMessage',
-    { channel, text: message },
-    { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } },
-  );
-  return data;
-}
-
-// ---------------------------------------------------------------------------
-// OpenAI tool definitions
-// ---------------------------------------------------------------------------
-
-const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
-  {
-    type: 'function',
-    function: {
-      name: 'get_zendesk_ticket',
-      description: 'Get detailed information about a Zendesk ticket by ID.',
-      parameters: {
-        type: 'object',
-        properties: { ticket_id: { type: 'string', description: 'The Zendesk ticket ID' } },
-        required: ['ticket_id'],
-      },
-    },
   },
-  {
-    type: 'function',
-    function: {
-      name: 'retrieve_embeddings',
-      description: 'Search Pinecone for similar known Q&A pairs using semantic similarity. Returns matches with similarity scores.',
-      parameters: {
-        type: 'object',
-        properties: { query: { type: 'string', description: 'The question or problem description to search for' } },
-        required: ['query'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'update_zendesk_ticket',
-      description: 'Update a Zendesk ticket status and post a public reply to the customer. Status meanings: open=pending on support, pending=waiting on customer, solved=customer is happy.',
-      parameters: {
-        type: 'object',
-        properties: {
-          ticket_id: { type: 'string', description: 'The Zendesk ticket ID' },
-          status: { type: 'string', enum: ['open', 'pending', 'solved'] },
-          comment: { type: 'string', description: 'Public reply to the customer' },
+});
+
+const updateZendeskTicketTool = createTool({
+  id: "update_zendesk_ticket",
+  description:
+    "Update a Zendesk ticket status and post a public reply to the customer. Status meanings: open=pending on support, pending=waiting on customer, solved=customer is happy.",
+  inputSchema: z.object({
+    ticket_id: z.string().describe("The Zendesk ticket ID"),
+    status: z.enum(["open", "pending", "solved"]),
+    comment: z.string().describe("Public reply to the customer"),
+  }),
+  execute: async ({
+    ticket_id,
+    status,
+    comment,
+  }: {
+    ticket_id: string;
+    status: string;
+    comment: string;
+  }) => {
+    const { data } = await axios.put(
+      `${zendeskBase()}/tickets/${ticket_id}`,
+      { ticket: { status, comment: { body: comment, public: true } } },
+      {
+        headers: {
+          Authorization: `Basic ${zendeskAuth()}`,
+          "Content-Type": "application/json",
         },
-        required: ['ticket_id', 'status', 'comment'],
-      },
-    },
+      }
+    );
+    return JSON.stringify(data.ticket);
   },
-  {
-    type: 'function',
-    function: {
-      name: 'notify_human_agent',
-      description: 'Send a Slack notification to the human support team to escalate a ticket.',
-      parameters: {
-        type: 'object',
-        properties: { message: { type: 'string', description: 'Escalation message with ticket details and reason' } },
-        required: ['message'],
-      },
-    },
+});
+
+
+const getSolvedTicketCommentsTool = createTool({
+  id: "get_solved_ticket_comments",
+  description: "Get all comments for a solved Zendesk ticket to extract Q&A knowledge.",
+  inputSchema: z.object({
+    ticket_id: z.string().describe("The Zendesk ticket ID"),
+  }),
+  execute: async ({ ticket_id }: { ticket_id: string }) => {
+    const { data } = await axios.get(`${zendeskBase()}/tickets/${ticket_id}/comments`, {
+      headers: { Authorization: `Basic ${zendeskAuth()}` },
+    });
+    return JSON.stringify(data.comments);
   },
-  {
-    type: 'function',
-    function: {
-      name: 'get_solved_ticket_comments',
-      description: 'Get all comments for a solved Zendesk ticket to extract Q&A knowledge.',
-      parameters: {
-        type: 'object',
-        properties: { ticket_id: { type: 'string', description: 'The Zendesk ticket ID' } },
-        required: ['ticket_id'],
-      },
-    },
+});
+
+const updatePineconeTool = createTool({
+  id: "update_pinecone",
+  description:
+    "Add a new Q&A pair to the Pinecone knowledge base. Only call this for clean, concise Q&A pairs.",
+  inputSchema: z.object({
+    question: z.string().describe("The customer question — concise, no superfluous text"),
+    answer: z.string().describe("The resolution — concise, no superfluous text"),
+  }),
+  execute: async ({ question, answer }: { question: string; answer: string }) => {
+    const vector = await generateEmbedding(question);
+    const id = `ticket-${Date.now()}`;
+    await axios.post(
+      `${process.env.PINECONE_HOST}/vectors/upsert`,
+      { vectors: [{ id, values: vector, metadata: { question, answer } }] },
+      { headers: { "Api-Key": process.env.PINECONE_API_KEY!, "Content-Type": "application/json" } }
+    );
+    return JSON.stringify({ id, question, answer });
   },
-  {
-    type: 'function',
-    function: {
-      name: 'update_pinecone',
-      description: 'Add a new Q&A pair to the Pinecone knowledge base. Only call this for clean, concise Q&A pairs.',
-      parameters: {
-        type: 'object',
-        properties: {
-          question: { type: 'string', description: 'The customer question — concise, no superfluous text' },
-          answer: { type: 'string', description: 'The resolution — concise, no superfluous text' },
-        },
-        required: ['question', 'answer'],
-      },
-    },
+});
+
+const lookupZendeskAgentTool = createTool({
+  id: "lookup_zendesk_agent",
+  description:
+    "Look up a Zendesk user/agent by ID to determine if they are a human agent (not a bot).",
+  inputSchema: z.object({
+    agent_id: z.string().describe("The Zendesk user/agent ID"),
+  }),
+  execute: async ({ agent_id }: { agent_id: string }) => {
+    const { data } = await axios.get(`${zendeskBase()}/users/${agent_id}`, {
+      headers: { Authorization: `Basic ${zendeskAuth()}` },
+    });
+    return JSON.stringify(data.user);
   },
-  {
-    type: 'function',
-    function: {
-      name: 'lookup_zendesk_agent',
-      description: 'Look up a Zendesk user/agent by ID to determine if they are a human agent (not a bot).',
-      parameters: {
-        type: 'object',
-        properties: { agent_id: { type: 'string', description: 'The Zendesk user/agent ID' } },
-        required: ['agent_id'],
-      },
-    },
-  },
-];
+});
 
 // ---------------------------------------------------------------------------
-// Agentic loop
+// Agent
 // ---------------------------------------------------------------------------
 
-const SYSTEM_PROMPT = `You are a customer support triage agent connected to Zendesk.
+const INSTRUCTIONS = `You are a customer support triage agent connected to Zendesk.
+
+If given a bare ticket ID number (e.g. "12345"), treat it as a ticket.created event for that ticket.
 
 When you receive a webhook payload:
 
@@ -219,7 +180,7 @@ FOR ticket.created events:
 2. Search for similar known answers using retrieve_embeddings
 3. If you find a highly confident match (score > 0.85), reply professionally and update the ticket to "pending" status
 4. If the customer confirms satisfaction, update to "solved"
-5. If no confident answer found, notify the human support team via Slack and update ticket to "open"
+5. If no confident answer found, reply explaining you cannot resolve it and that a human agent will follow up, then update the ticket to "open"
 6. Never mark a ticket as solved unless the customer is clearly happy with the resolution
 
 FOR ticket.status_changed to SOLVED events:
@@ -234,167 +195,58 @@ Status meanings:
 - pending: waiting on the customer
 - solved: customer is happy with the resolution`;
 
-async function runAgentLoop(webhookPayload: unknown, hooks: StreamHooks): Promise<void> {
-  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-    { role: 'system', content: SYSTEM_PROMPT },
-    { role: 'user', content: `Zendesk webhook received:\n\n${JSON.stringify(webhookPayload, null, 2)}` },
-  ];
+const memory = new Memory({
+  storage: new LibSQLStore({ id: "memory", url: ":memory:" }),
+});
 
-  let iterations = 0;
-  const MAX_ITERATIONS = 10;
+const agent = new Agent({
+  id: "ticket-triage-agent",
+  name: "Customer Ticket Triage Agent",
+  instructions: INSTRUCTIONS,
+  model: "openai/gpt-4o-mini",
+  memory,
+  tools: {
+    get_zendesk_ticket: getZendeskTicketTool,
+    retrieve_embeddings: retrieveEmbeddingsTool,
+    update_zendesk_ticket: updateZendeskTicketTool,
+    get_solved_ticket_comments: getSolvedTicketCommentsTool,
+    update_pinecone: updatePineconeTool,
+    lookup_zendesk_agent: lookupZendeskAgentTool,
+  },
+});
 
-  while (iterations < MAX_ITERATIONS) {
-    iterations++;
-
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      max_tokens: 2048,
-      tools: TOOLS,
-      messages,
-    });
-
-    const message = response.choices[0].message;
-
-    if (message.content) {
-      await hooks.onChunk(message.content);
-    }
-
-    if (response.choices[0].finish_reason === 'stop') break;
-
-    if (response.choices[0].finish_reason === 'tool_calls') {
-      messages.push(message);
-
-      for (const toolCall of message.tool_calls ?? []) {
-        const name = toolCall.function.name;
-        await hooks.onChunk(`\n[${name}]...\n`);
-
-        let result: unknown;
-        try {
-          const input = JSON.parse(toolCall.function.arguments) as Record<string, string>;
-          switch (name) {
-            case 'get_zendesk_ticket':
-              result = await getZendeskTicket(input.ticket_id);
-              break;
-            case 'retrieve_embeddings':
-              result = await retrieveEmbeddings(input.query);
-              break;
-            case 'update_zendesk_ticket':
-              result = await updateZendeskTicket(input.ticket_id, input.status, input.comment);
-              break;
-            case 'notify_human_agent':
-              result = await notifyHumanAgent(input.message);
-              break;
-            case 'get_solved_ticket_comments':
-              result = await getSolvedTicketComments(input.ticket_id);
-              break;
-            case 'update_pinecone':
-              result = await updatePinecone(input.question, input.answer);
-              break;
-            case 'lookup_zendesk_agent':
-              result = await lookupZendeskAgent(input.agent_id);
-              break;
-            default:
-              result = { error: `Unknown tool: ${name}` };
-          }
-        } catch (err) {
-          result = { error: err instanceof Error ? err.message : String(err) };
-          await hooks.onChunk(`  error: ${(result as Record<string, string>).error}\n`);
-        }
-
-        messages.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          content: JSON.stringify(result),
-        });
-      }
-    } else {
-      break;
-    }
-  }
-}
+new Mastra({ agents: { "ticket-triage-agent": agent } });
 
 // ---------------------------------------------------------------------------
 // Zendesk webhook HTTP server (port 3000)
 // ---------------------------------------------------------------------------
 
-function startWebhookServer(): void {
-  try {
-  Bun.serve({
-    port: 3000,
-    async fetch(req) {
-      if (req.method !== 'POST') {
-        return new Response('Method Not Allowed', { status: 405 });
-      }
-
-      let payload: unknown;
-      try {
-        payload = await req.json();
-      } catch {
-        return new Response('Invalid JSON', { status: 400 });
-      }
-
-      // Respond immediately to Zendesk, process async
-      runAgentLoop(payload, {
-        onChunk: (text) => { process.stdout.write(text); },
-        onError: (err) => { console.error('Agent error:', err.message); },
-        onFinish: () => { console.log('\nAgent finished.'); },
-        onStatusUpdate: () => {},
-        onTranscript: () => {},
-        onAudioChunk: () => {},
-        onAudioEnd: () => {},
-      }).catch((err) => console.error('Unhandled error:', err));
-
-      return new Response(JSON.stringify({ ok: true }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    },
-  });
-
-  console.log('Zendesk webhook server listening on :3000');
-  } catch (err) {
-    console.error('Failed to start webhook server:', err);
-  }
-}
-
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught exception:', err);
-});
-
-process.on('unhandledRejection', (reason) => {
-  console.error('Unhandled rejection:', reason);
-});
-
-// ---------------------------------------------------------------------------
-// Astropods adapter (web chat / testing)
-// ---------------------------------------------------------------------------
-
-const adapter: AgentAdapter = {
-  name: 'ticket-triage-agent',
-
-  getConfig() {
-    return {
-      systemPrompt:
-        'Customer support triage agent. Send a Zendesk webhook payload as JSON to process it. Auto-resolves tickets using Pinecone knowledge base, escalates to humans when unsure, and learns from human-solved tickets.',
-      tools: [],
-    };
-  },
-
-  async stream(prompt: string, hooks: StreamHooks, _options: StreamOptions): Promise<void> {
-    const payload = parseWebhookPayload(prompt.trim());
-
-    if (payload === null) {
-      await hooks.onChunk(
-        'Please send a Zendesk ticket ID (e.g. `12345`) or a full webhook JSON payload.',
-      );
-      hooks.onFinish();
-      return;
+Bun.serve({
+  port: 3000,
+  async fetch(req) {
+    if (req.method !== "POST") {
+      return new Response("Method Not Allowed", { status: 405 });
+    }
+    let payload: unknown;
+    try {
+      payload = await req.json();
+    } catch {
+      return new Response("Invalid JSON", { status: 400 });
     }
 
-    await runAgentLoop(payload, hooks);
-    hooks.onFinish();
-  },
-};
+    // Respond immediately to Zendesk, process async
+    agent
+      .generate(`Zendesk webhook received:\n\n${JSON.stringify(payload, null, 2)}`)
+      .then((result) => console.log("Webhook processed:", result.text?.slice(0, 200)))
+      .catch((err) => console.error("Agent error:", err instanceof Error ? err.message : String(err)));
 
-startWebhookServer();
-serve(adapter);
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  },
+});
+
+console.log("Zendesk webhook server listening on :3000");
+
+serve(new MastraAdapter(agent));
