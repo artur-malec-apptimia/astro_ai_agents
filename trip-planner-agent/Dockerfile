@@ -16,6 +16,7 @@ WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/agent ./agent
 COPY --from=builder /app/package.json ./
+COPY --from=builder /app/tsconfig.json ./
 
 RUN chown -R bun:bun /app
 USER bun

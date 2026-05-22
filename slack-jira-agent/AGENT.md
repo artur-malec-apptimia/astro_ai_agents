@@ -13,7 +13,7 @@ capabilities:
   - "Return the direct Atlassian URL to the created ticket"
 repository:
   type: github
-  url: https://github.com/artur-malec-apptimia/agents
+  url: https://github.com/astropods/agents
   directory: slack-jira-agent
 integrations:
   - OpenAI
