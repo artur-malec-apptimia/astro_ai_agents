@@ -1,11 +1,13 @@
 # yaml-language-server: $schema=https://astropods.ai/schema/package.json
 spec: package/v1
-name: "route-urgent-tickets-agent"
+name: route-urgent-tickets-agent
 
 agent:
   build:
     context: .
     dockerfile: Dockerfile
+  interfaces:
+    messaging: true
 
 models:
   openai:
@@ -20,7 +22,6 @@ inputs:
   ZENDESK_USERNAME:
     name: ZENDESK_USERNAME
     datatype: string
-    secret: true
     description: "Zendesk agent email address for API authentication"
     display-as: short-text
   ZENDESK_API_KEY:
@@ -43,7 +44,6 @@ inputs:
   PAGERDUTY_FROM_EMAIL:
     name: PAGERDUTY_FROM_EMAIL
     datatype: string
-    secret: true
     description: "Email address for PagerDuty From header (required by PagerDuty API)"
     display-as: short-text
 
@@ -51,3 +51,6 @@ dev:
   interfaces:
     messaging:
       adapters: [web, slack]
+      slack:
+        socket_mode: true
+        auto_thread: true
