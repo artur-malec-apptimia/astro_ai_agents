@@ -4,7 +4,7 @@ export async function searchYelp(
   limit: number,
 ): Promise<unknown> {
   const apiKey = process.env.YELP_API_KEY;
-  if (!apiKey) throw new Error('YELP_API_KEY not set');
+  if (!apiKey) throw new Error("YELP_API_KEY not set");
 
   const url =
     `https://api.yelp.com/v3/businesses/search` +

@@ -2,14 +2,17 @@ import { serve } from "@astropods/adapter-core";
 import { MastraAdapter } from "@astropods/adapter-mastra";
 import { Agent } from "@mastra/core/agent";
 import { Mastra } from "@mastra/core/mastra";
-import { Memory } from "@mastra/memory";
-import { LibSQLStore } from "@mastra/libsql";
 import { createTool } from "@mastra/core/tools";
+import { LibSQLStore } from "@mastra/libsql";
+import { Memory } from "@mastra/memory";
 import { z } from "zod";
 import { getTodaysDate } from "./tools/date";
-import { getWeatherForecast, getHistoricalWeather } from "./tools/weather";
+import {
+  addWeatherToNotionDatabase,
+  createNotionTripPlanTemplate,
+} from "./tools/notion";
+import { getHistoricalWeather, getWeatherForecast } from "./tools/weather";
 import { searchYelp } from "./tools/yelp";
-import { createNotionTripPlanTemplate, addWeatherToNotionDatabase } from "./tools/notion";
 
 // ---------------------------------------------------------------------------
 // Tools
@@ -43,7 +46,10 @@ const getWeatherForecastTool = createTool({
     longitude: number;
     start_date: string;
     end_date: string;
-  }) => JSON.stringify(await getWeatherForecast(latitude, longitude, start_date, end_date)),
+  }) =>
+    JSON.stringify(
+      await getWeatherForecast(latitude, longitude, start_date, end_date),
+    ),
 });
 
 const getHistoricalWeatherTool = createTool({
@@ -65,7 +71,10 @@ const getHistoricalWeatherTool = createTool({
     longitude: number;
     start_date: string;
     end_date: string;
-  }) => JSON.stringify(await getHistoricalWeather(latitude, longitude, start_date, end_date)),
+  }) =>
+    JSON.stringify(
+      await getHistoricalWeather(latitude, longitude, start_date, end_date),
+    ),
 });
 
 const searchYelpTool = createTool({
@@ -73,7 +82,11 @@ const searchYelpTool = createTool({
   description:
     'Searches Yelp for local businesses, activities, and restaurants at the destination. Call multiple times for different categories (e.g. "restaurants", "museums", "outdoor activities").',
   inputSchema: z.object({
-    term: z.string().describe('Search term e.g. "restaurants", "museums", "outdoor activities"'),
+    term: z
+      .string()
+      .describe(
+        'Search term e.g. "restaurants", "museums", "outdoor activities"',
+      ),
     location: z.string().describe("City or address to search near"),
     limit: z.number().describe("Max results to return (1-50)"),
   }),
@@ -91,10 +104,14 @@ const searchYelpTool = createTool({
 const createNotionTripPlanTemplateTool = createTool({
   id: "create_notion_trip_plan_template",
   description:
-    'Creates a Notion page with a Trip Schedule database and Packing List. Call this FIRST before adding daily entries. Returns trip_page_id and trip_schedule_database_id needed for subsequent calls.',
+    "Creates a Notion page with a Trip Schedule database and Packing List. Call this FIRST before adding daily entries. Returns trip_page_id and trip_schedule_database_id needed for subsequent calls.",
   inputSchema: z.object({
-    trip_page_title: z.string().describe('Title for the trip page e.g. "Paris Trip - June 2025"'),
-    packing_list: z.array(z.string()).describe("List of items to pack for the trip"),
+    trip_page_title: z
+      .string()
+      .describe('Title for the trip page e.g. "Paris Trip - June 2025"'),
+    packing_list: z
+      .array(z.string())
+      .describe("List of items to pack for the trip"),
   }),
   execute: async ({
     trip_page_title,
@@ -102,7 +119,10 @@ const createNotionTripPlanTemplateTool = createTool({
   }: {
     trip_page_title: string;
     packing_list: string[];
-  }) => JSON.stringify(await createNotionTripPlanTemplate(trip_page_title, packing_list)),
+  }) =>
+    JSON.stringify(
+      await createNotionTripPlanTemplate(trip_page_title, packing_list),
+    ),
 });
 
 const addWeatherToNotionDatabaseTool = createTool({
@@ -141,8 +161,8 @@ const addWeatherToNotionDatabaseTool = createTool({
         trip_date,
         weather_summary,
         activities_planned,
-        dining_plan
-      )
+        dining_plan,
+      ),
     ),
 });
 

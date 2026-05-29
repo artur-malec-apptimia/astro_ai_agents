@@ -1,11 +1,13 @@
 {
   "name": "trip-planner",
   "version": "0.1.0",
-  "description": "Trip planning agent — Astropods port of the Postman trip-planner template",
+  "description": "Trip planning agent \u2014 Astropods port of the Postman trip-planner template",
   "scripts": {
     "dev": "bun --watch agent/index.ts",
     "start": "bun agent/index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "lint": "biome check .",
+    "typecheck": "tsc --noEmit"
   },
   "main": "./agent/index.ts",
   "dependencies": {
@@ -19,6 +21,7 @@
   },
   "devDependencies": {
     "@types/bun": "^1.1.14",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "@biomejs/biome": "latest"
   }
 }

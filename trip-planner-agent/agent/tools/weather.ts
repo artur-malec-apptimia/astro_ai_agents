@@ -1,9 +1,9 @@
 const COMMON_PARAMS =
-  'daily=weather_code,temperature_2m_max,temperature_2m_min' +
-  '&timezone=America%2FNew_York' +
-  '&wind_speed_unit=mph' +
-  '&temperature_unit=fahrenheit' +
-  '&precipitation_unit=inch';
+  "daily=weather_code,temperature_2m_max,temperature_2m_min" +
+  "&timezone=America%2FNew_York" +
+  "&wind_speed_unit=mph" +
+  "&temperature_unit=fahrenheit" +
+  "&precipitation_unit=inch";
 
 export async function getWeatherForecast(
   latitude: number,
