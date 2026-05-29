@@ -2,12 +2,12 @@ import { serve } from "@astropods/adapter-core";
 import { MastraAdapter } from "@astropods/adapter-mastra";
 import { Agent } from "@mastra/core/agent";
 import { Mastra } from "@mastra/core/mastra";
-import { Memory } from "@mastra/memory";
-import { LibSQLStore } from "@mastra/libsql";
 import { createTool } from "@mastra/core/tools";
-import { z } from "zod";
-import OpenAI from "openai";
+import { LibSQLStore } from "@mastra/libsql";
+import { Memory } from "@mastra/memory";
 import axios from "axios";
+import OpenAI from "openai";
+import { z } from "zod";
 import type { JiraTicket } from "./utils";
 
 const openai = new OpenAI();
@@ -47,7 +47,7 @@ async function createJiraTicket(ticket: JiraTicket): Promise<string> {
 
   if (!subdomain || !username || !apiKey || !projectId) {
     throw new Error(
-      "Missing required Jira environment variables: JIRA_SUBDOMAIN, JIRA_USERNAME, JIRA_API_KEY, JIRA_PROJECT_ID"
+      "Missing required Jira environment variables: JIRA_SUBDOMAIN, JIRA_USERNAME, JIRA_API_KEY, JIRA_PROJECT_ID",
     );
   }
 
@@ -79,7 +79,7 @@ async function createJiraTicket(ticket: JiraTicket): Promise<string> {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-    }
+    },
   );
 
   const issueKey: string = response.data.key;
@@ -99,7 +99,7 @@ const createJiraFromContext = createTool({
     text: z
       .string()
       .describe(
-        "Problem description or a Slack thread URL (https://workspace.slack.com/archives/.../p...)"
+        "Problem description or a Slack thread URL (https://workspace.slack.com/archives/.../p...)",
       ),
   }),
   execute: async ({ text }: { text: string }) => {

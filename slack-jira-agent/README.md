@@ -1,5 +1,7 @@
 # Slack to Jira Agent
 
+[![Deploy on Astropods](../assets/deploy-button.svg)](https://astropods.com/astro-ai/slack-jira-agent)
+
 An Astro agent that turns a problem description into a Jira ticket in seconds. Describe the issue in plain text — from the web playground or directly in Slack — and the agent generates a concise title and detailed description, creates the ticket, and returns the link.
 
 ## Workflow
@@ -70,3 +72,7 @@ slack-jira-agent/
 ## Model
 
 Uses `openai/gpt-4o-mini` via the Astro-managed OpenAI integration.
+
+## Agent directory
+
+View this agent on Astropods: [astropods.com/astro-ai/slack-jira-agent](https://astropods.com/astro-ai/slack-jira-agent)

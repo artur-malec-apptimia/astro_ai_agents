@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "bun run agent/index.ts",
     "start": "bun run agent/index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "lint": "biome check .",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@astropods/adapter-core": "latest",
@@ -19,6 +21,7 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "@biomejs/biome": "latest"
   }
 }
